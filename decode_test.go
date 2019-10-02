@@ -431,12 +431,13 @@ var unmarshalTests = []unmarshalTest{
 		{in: `"invalid: \uD834x\uDD1E"`, ptr: new(string), out: "invalid: \uFFFDx\uFFFD"},
 	*/
 	{in: []byte{'Z'}, ptr: new(interface{}), out: nil},
+	{in: []byte{'[', '$', 'U', 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
+
 	/*
 		{in: `{"X": [1,2,3], "Y": 4}`, ptr: new(T), out: T{Y: 4}, err: &UnmarshalTypeError{"array", reflect.TypeOf(""), 7, "T", "X"}},
 		{in: `{"X": 23}`, ptr: new(T), out: T{}, err: &UnmarshalTypeError{"number", reflect.TypeOf(""), 8, "T", "X"}}, {in: `{"x": 1}`, ptr: new(tx), out: tx{}},
 	*/
 	{in: []byte{'{', '}'}, ptr: new(tx), out: tx{}},
-
 	{in: []byte{'{', 'U', 1, 'x', 'U', 1, '}'}, ptr: new(tx), out: tx{}},
 	/*
 		{in: `{"x": 1}`, ptr: new(tx), err: fmt.Errorf("json: unknown field \"x\""), disallowUnknownFields: true},

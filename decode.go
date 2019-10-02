@@ -181,6 +181,14 @@ func (d *decodeState) value(marker byte, v reflect.Value) error {
 			d.skip()
 		}
 
+	case scanBeginArray:
+		if v.IsValid() {
+			if err := d.array(v); err != nil {
+				return err
+			}
+		} else {
+			d.skip()
+		}
 	}
 
 	return nil
@@ -189,18 +197,17 @@ func (d *decodeState) value(marker byte, v reflect.Value) error {
 // skip scans to the end of what was started.
 func (d *decodeState) skip() {
 	panic("unimplemented")
-
-	s, data, i := &d.scan, d.data, d.off
-	depth := len(s.parseState)
-	for {
-		op := s.step(s, data[i])
-		i++
-		if len(s.parseState) < depth {
-			d.off = i
-			d.opcode = op
-			return
+	/*
+		data, i := d.data, d.off
+		depth := len(s.parseState)
+		for {
+			i++
+			if len(s.parseState) < depth {
+				d.off = i
+				return
+			}
 		}
-	}
+	*/
 }
 
 func (d *decodeState) skipLiteral(marker byte) error {
@@ -220,9 +227,7 @@ func (d *decodeState) skipLiteral(marker byte) error {
 	case markerInt64Literal:
 		d.off += 8
 	case markerStringLiteral:
-		fmt.Println("string")
 		length, err := d.readLength()
-		fmt.Println(length, err)
 		if err != nil {
 			return err
 		}
@@ -249,6 +254,15 @@ func (d *decodeState) readLength() (int, error) {
 	return 0, d.syntaxError(marker, "expected string length")
 }
 
+func (d *decodeState) isMarker(marker byte) bool {
+	if d.off < len(d.data) && d.data[d.off] == marker {
+		d.off++
+		return true
+	}
+
+	return false
+}
+
 func (d *decodeState) eof() error {
 	if d.off > len(d.data) {
 		return &SyntaxError{"unexpected end of UBJSON input", int64(d.off)}
@@ -273,10 +287,120 @@ func (d *decodeState) scanNext() byte {
 	}
 }
 
+// array consumes an array from d.data[d.off-1:], decoding into v.
+// The first byte of the array ('[') has been read already.
+func (d *decodeState) array(v reflect.Value) error {
+	// Check for unmarshaler.
+	u, ut, pv := indirect(v, false)
+	if u != nil {
+		start := d.readIndex()
+		d.skip()
+		return u.UnmarshalUBJSON(d.data[start:d.off])
+	}
+	if ut != nil {
+		d.saveError(&UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)})
+		d.skip()
+		return nil
+	}
+	v = pv
+
+	// Check type of target.
+	switch v.Kind() {
+	case reflect.Interface:
+		if v.NumMethod() == 0 {
+			// Decoding into nil interface? Switch to non-reflect code.
+			ai := d.arrayInterface()
+			v.Set(reflect.ValueOf(ai))
+			return nil
+		}
+		// Otherwise it's invalid.
+		fallthrough
+	default:
+		d.saveError(&UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)})
+		d.skip()
+		return nil
+	case reflect.Array, reflect.Slice:
+		break
+	}
+
+	fmt.Println(d.data[d.off:])
+
+	var typeMarker byte
+	if d.isMarker(markerType) {
+		typeMarker = d.scanNext()
+	}
+
+	fmt.Println(d.data[d.off:])
+
+	fmt.Println(typeMarker)
+
+	i := 0
+	for {
+		// Look ahead for ] - can only happen on first iteration.
+		if d.isMarker(markerArrayEnd) {
+			d.off++
+			break
+		}
+
+		// Get element of array, growing if necessary.
+		if v.Kind() == reflect.Slice {
+			// Grow slice if necessary
+			if i >= v.Cap() {
+				newcap := v.Cap() + v.Cap()/2
+				if newcap < 4 {
+					newcap = 4
+				}
+				newv := reflect.MakeSlice(v.Type(), v.Len(), newcap)
+				reflect.Copy(newv, v)
+				v.Set(newv)
+			}
+			if i >= v.Len() {
+				v.SetLen(i + 1)
+			}
+		}
+
+		eType := typeMarker
+		if eType == 0 {
+			fmt.Println("hmm")
+			eType = d.scanNext()
+		}
+
+		if i < v.Len() {
+			// Decode into element.
+			fmt.Println(eType)
+			if err := d.value(eType, v.Index(i)); err != nil {
+				return err
+			}
+		} else {
+			// Ran out of fixed array: skip.
+			if err := d.value(eType, reflect.Value{}); err != nil {
+				return err
+			}
+		}
+		i++
+
+	}
+
+	if i < v.Len() {
+		if v.Kind() == reflect.Array {
+			// Array. Zero the rest.
+			z := reflect.Zero(v.Type().Elem())
+			for ; i < v.Len(); i++ {
+				v.Index(i).Set(z)
+			}
+		} else {
+			v.SetLen(i)
+		}
+	}
+	if i == 0 && v.Kind() == reflect.Slice {
+		v.Set(reflect.MakeSlice(v.Type(), 0, 0))
+	}
+	return nil
+}
+
 // object consumes an object from d.data[d.off-1:], decoding into v.
 // The first byte ('{') of the object has been read already.
 func (d *decodeState) object(v reflect.Value) error {
-	fmt.Println("obj", d.data[d.readIndex():])
 	// Check for unmarshaler.
 	u, ut, pv := indirect(v, false)
 	if u != nil {
@@ -335,28 +459,23 @@ func (d *decodeState) object(v reflect.Value) error {
 	var mapElem reflect.Value
 	origErrorContext := d.errorContext
 
-	fmt.Println(d.data[d.readIndex():])
-
 	for {
 		if err := d.eof(); err != nil {
 			return err
 		}
 		// Read opening " of string key or closing }.
 		if d.data[d.off] == markerObjectEnd {
+			d.off++
 			break
 		}
 
 		// Read key.
 		start := d.off
-		fmt.Println(d.data[start:])
 		if err := d.skipLiteral(markerStringLiteral); err != nil {
 			return err
 		}
 		item := d.data[start:d.off]
-		fmt.Println(item)
 		key := extractString(item)
-		fmt.Println("key", key)
-		fmt.Println(d.data[d.off:])
 
 		// Figure out field corresponding to key.
 		var subv reflect.Value
@@ -474,7 +593,6 @@ func (d *decodeState) object(v reflect.Value) error {
 }
 
 func (d *decodeState) literalStore(marker byte, item []byte, v reflect.Value) error {
-	fmt.Println("store", string([]byte{marker}), item)
 	// Check for unmarshaler.
 	if marker == 0 {
 		//Empty string given
@@ -682,7 +800,7 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 
 // valueInterface is like value but returns interface{}
 func (d *decodeState) valueInterface() (val interface{}) {
-	switch d.opcode {
+	switch d.scan.readOpcode(d.scanNext()) {
 	default:
 		panic(phasePanicMsg)
 	case scanBeginArray:
@@ -699,63 +817,54 @@ func (d *decodeState) valueInterface() (val interface{}) {
 
 // arrayInterface is like array but returns []interface{}.
 func (d *decodeState) arrayInterface() []interface{} {
-	var v = make([]interface{}, 0)
-	for {
-		// Look ahead for ] - can only happen on first iteration.
-		if d.opcode == scanEndArray {
-			break
-		}
+	panic("unimplemented")
+	/*
+		var v = make([]interface{}, 0)
+		for {
+			// Look ahead for ] - can only happen on first iteration.
+			if d.opcode == scanEndArray {
+				break
+			}
 
-		v = append(v, d.valueInterface())
+			v = append(v, d.valueInterface())
 
-		// Next token must be , or ].
-		if d.opcode == scanEndArray {
-			break
+			// Next token must be , or ].
+			if d.opcode == scanEndArray {
+				break
+			}
+			if d.opcode != scanArrayValue {
+				panic(phasePanicMsg)
+			}
 		}
-		if d.opcode != scanArrayValue {
-			panic(phasePanicMsg)
-		}
-	}
-	return v
+		return v
+	*/
 }
 
 // objectInterface is like object but returns map[string]interface{}.
 func (d *decodeState) objectInterface() map[string]interface{} {
 	m := make(map[string]interface{})
 	for {
-		// Read opening " of string key or closing }.
-		if d.opcode == scanEndObject {
-			// closing } - can only happen on first iteration.
-			break
+		if err := d.eof(); err != nil {
+			panic(err)
 		}
-		if d.opcode != scanBeginLiteral {
-			panic(phasePanicMsg)
+
+		// Read opening " of string key or closing }.
+		if d.data[d.off] == scanEndObject {
+			// closing } - can only happen on first iteration.
+			d.off++
+			break
 		}
 
 		// Read string key.
-		start := d.readIndex()
+		start := d.off
 		if err := d.skipLiteral(markerStringLiteral); err != nil {
 			panic(err)
 		}
-		item := d.data[start:d.readIndex()]
+		item := d.data[start:d.off]
 		key := extractString(item)
-
-		// Read : before value.
-
-		if d.opcode != scanObjectKey {
-			panic(phasePanicMsg)
-		}
 
 		// Read value.
 		m[string(key)] = d.valueInterface()
-
-		// Next token must be , or }.
-		if d.opcode == scanEndObject {
-			break
-		}
-		if d.opcode != scanObjectValue {
-			panic(phasePanicMsg)
-		}
 	}
 	return m
 }

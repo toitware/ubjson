@@ -216,13 +216,10 @@ func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
 		return newStructEncoder(t)
 	case reflect.Map:
 		return newMapEncoder(t)
-		/*
-			case reflect.Slice:
-				return newSliceEncoder(t)
-			case reflect.Array:
-				return newArrayEncoder(t)
-
-		*/
+	case reflect.Slice:
+		return newSliceEncoder(t)
+	case reflect.Array:
+		return newArrayEncoder(t)
 	case reflect.Ptr:
 		return newPtrEncoder(t)
 	default:
@@ -348,7 +345,6 @@ FieldLoop:
 
 		// Find the nested struct field by following f.index.
 		fv := v
-		fmt.Println(f, fv)
 		for _, i := range f.index {
 			if fv.Kind() == reflect.Ptr {
 				if fv.IsNil() {
@@ -418,6 +414,62 @@ func newMapEncoder(t reflect.Type) encoderFunc {
 	}
 	me := mapEncoder{typeEncoder(t.Elem())}
 	return me.encode
+}
+
+func encodeByteSlice(e *encodeState, v reflect.Value, _ encOpts) {
+	if v.IsNil() {
+		e.WriteByte(markerNullLiteral)
+		return
+	}
+	s := v.Bytes()
+	e.WriteByte(markerArrayBegin)
+	e.WriteByte(markerType)
+	e.WriteByte(markerUint8Literal)
+	e.Write(s)
+	e.WriteByte(markerArrayEnd)
+}
+
+// sliceEncoder just wraps an arrayEncoder, checking to make sure the value isn't nil.
+type sliceEncoder struct {
+	arrayEnc encoderFunc
+}
+
+func (se sliceEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
+	if v.IsNil() {
+		e.WriteByte(markerNullLiteral)
+		return
+	}
+	se.arrayEnc(e, v, opts)
+}
+
+func newSliceEncoder(t reflect.Type) encoderFunc {
+	// Byte slices get special treatment; arrays don't.
+	if t.Elem().Kind() == reflect.Uint8 {
+		//p := reflect.PtrTo(t.Elem())
+		// if !p.Implements(marshalerType) && !p.Implements(textMarshalerType) {
+		return encodeByteSlice
+		//}
+	}
+	enc := sliceEncoder{newArrayEncoder(t)}
+	return enc.encode
+}
+
+type arrayEncoder struct {
+	elemEnc encoderFunc
+}
+
+func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
+	e.WriteByte(markerArrayBegin)
+	n := v.Len()
+	for i := 0; i < n; i++ {
+		ae.elemEnc(e, v.Index(i), opts)
+	}
+	e.WriteByte(markerArrayEnd)
+}
+
+func newArrayEncoder(t reflect.Type) encoderFunc {
+	enc := arrayEncoder{typeEncoder(t.Elem())}
+	return enc.encode
 }
 
 type ptrEncoder struct {

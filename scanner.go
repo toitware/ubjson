@@ -108,6 +108,10 @@ const (
 	markerStringLiteral = 'S'
 	markerObjectBegin   = '{'
 	markerObjectEnd     = '}'
+	markerArrayBegin    = '['
+	markerArrayEnd      = ']'
+	markerType          = '$'
+	markerCount         = '#'
 
 	scanSkipSpace // space byte; can skip; known to be last "continue" result
 
@@ -203,8 +207,8 @@ func (s *scanner) readOpcode(b byte) int {
 	case markerObjectBegin:
 		return scanBeginObject
 
-	case markerObjectEnd:
-		return scanEndObject
+	case markerArrayBegin:
+		return scanBeginArray
 	}
 
 	return 0
