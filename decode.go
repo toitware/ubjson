@@ -83,7 +83,6 @@ func (e *InvalidUnmarshalError) Error() string {
 type decodeState struct {
 	data         []byte
 	off          int // next read offset in data
-	opcode       int // last read result
 	scan         scanner
 	errorContext struct { // provides context for type errors
 		Struct     reflect.Type
@@ -156,26 +155,16 @@ func (d *decodeState) addErrorContext(err error) error {
 // reads the following byte ahead. If v is invalid, the value is discarded.
 // The first byte of the value has been read already.
 func (d *decodeState) value(marker byte, v reflect.Value) error {
-	//d.begin()
-
-	//opcode, size := opcodeSize(d.data[d.off])
-
-	//fmt.Println(opcode, size)
-
 	switch d.scan.readOpcode(marker) {
 	default:
 		return d.syntaxError(marker, "looking for beginning of value")
-		// return &SyntaxError{"invalid byte " + quoteChar(d.data[d.readIndex()]) + " " + "looking for beginning of value", int64(d.off)}
 
 	case scanBeginLiteral:
-		// All bytes inside literal return scanContinue op code.
 		start := d.off
 
 		if err := d.skipLiteral(marker); err != nil {
 			return err
 		}
-		// Skip data.
-		// d.off += size
 
 		if v.IsValid() {
 			if err := d.literalStore(marker, d.data[start:d.off], v); err != nil {
@@ -192,7 +181,6 @@ func (d *decodeState) value(marker byte, v reflect.Value) error {
 			d.skip()
 		}
 
-		d.scanNext()
 	}
 
 	return nil
