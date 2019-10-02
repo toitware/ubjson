@@ -1,8 +1,4 @@
-// Copyright 2010 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-package json
+package ubjson
 
 // JSON value parser state machine.
 // Just about at the limit of what is reasonable to write by hand.
@@ -13,7 +9,9 @@ package json
 // This file starts with two simple examples using the scanner
 // before diving into the scanner itself.
 
-import "strconv"
+import (
+	"strconv"
+)
 
 // Valid reports whether data is a valid JSON encoding.
 func Valid(data []byte) bool {
@@ -85,16 +83,33 @@ type scanner struct {
 // every subsequent call will return scanError too.
 const (
 	// Continue.
-	scanContinue     = iota // uninteresting byte
-	scanBeginLiteral        // end implied by next result != scanContinue
-	scanBeginObject         // begin object
-	scanObjectKey           // just finished object key (string)
-	scanObjectValue         // just finished non-last object value
-	scanEndObject           // end object (implies scanObjectValue if possible)
-	scanBeginArray          // begin array
-	scanArrayValue          // just finished array value
-	scanEndArray            // end array (implies scanArrayValue if possible)
-	scanSkipSpace           // space byte; can skip; known to be last "continue" result
+	scanContinue = iota // uninteresting byte
+	//scanBeginLiteral        // end implied by next result != scanContinue
+	//scanBeginObject         // begin object
+	scanObjectKey   // just finished object key (string)
+	scanObjectValue // just finished non-last object value
+	scanEndObject   // end object (implies scanObjectValue if possible)
+	//scanBeginArray          // begin array
+	scanArrayValue // just finished array value
+	scanEndArray   // end array (implies scanArrayValue if possible)
+
+	scanBeginLiteral = iota
+	scanBeginObject
+	scanBeginArray
+
+	markerNullLiteral   = 'Z'
+	markerTrueLiteral   = 'T'
+	markerFalseLiteral  = 'F'
+	markerInt8Literal   = 'i'
+	markerUint8Literal  = 'U'
+	markerInt16Literal  = 'I'
+	markerInt32Literal  = 'l'
+	markerInt64Literal  = 'L'
+	markerStringLiteral = 'S'
+	markerObjectBegin   = '{'
+	markerObjectEnd     = '}'
+
+	scanSkipSpace // space byte; can skip; known to be last "continue" result
 
 	// Stop.
 	scanEnd   // top-level value ended *before* this byte; known to be first "stop" result
@@ -172,43 +187,76 @@ func stateBeginValueOrEmpty(s *scanner, c byte) int {
 	return stateBeginValue(s, c)
 }
 
+func (s *scanner) readOpcode(b byte) int {
+	switch b {
+	case markerNullLiteral,
+		markerTrueLiteral,
+		markerFalseLiteral,
+		markerInt8Literal,
+		markerUint8Literal,
+		markerInt16Literal,
+		markerInt32Literal,
+		markerInt64Literal,
+		markerStringLiteral:
+		return scanBeginLiteral
+
+	case markerObjectBegin:
+		return scanBeginObject
+
+	case markerObjectEnd:
+		return scanEndObject
+	}
+
+	return 0
+}
+
+// stateBeginValue is the state at the beginning of the input.
+func skipLiteral(c byte) (byte, int) {
+	switch c {
+	case markerNullLiteral:
+		return c, 1
+	case markerTrueLiteral:
+		return c, 1
+	case markerFalseLiteral:
+		return c, 1
+	case markerInt8Literal:
+		return c, 2
+	case markerUint8Literal:
+		return c, 2
+	case markerInt16Literal:
+		return c, 3
+	case markerInt32Literal:
+		return c, 5
+	case markerInt64Literal:
+		return c, 9
+	case markerStringLiteral:
+		return c, 9
+	}
+	return 0, 0
+}
+
 // stateBeginValue is the state at the beginning of the input.
 func stateBeginValue(s *scanner, c byte) int {
-	if c <= ' ' && isSpace(c) {
-		return scanSkipSpace
-	}
-	switch c {
-	case '{':
-		s.step = stateBeginStringOrEmpty
-		s.pushParseState(parseObjectKey)
-		return scanBeginObject
-	case '[':
-		s.step = stateBeginValueOrEmpty
-		s.pushParseState(parseArrayValue)
-		return scanBeginArray
-	case '"':
-		s.step = stateInString
-		return scanBeginLiteral
-	case '-':
-		s.step = stateNeg
-		return scanBeginLiteral
-	case '0': // beginning of 0.123
-		s.step = state0
-		return scanBeginLiteral
-	case 't': // beginning of true
-		s.step = stateT
-		return scanBeginLiteral
-	case 'f': // beginning of false
-		s.step = stateF
-		return scanBeginLiteral
-	case 'n': // beginning of null
-		s.step = stateN
-		return scanBeginLiteral
-	}
-	if '1' <= c && c <= '9' { // beginning of 1234.5
-		s.step = state1
-		return scanBeginLiteral
-	}
+	/*
+		switch c {
+		case 'Z':
+			return scanNullLiteral
+		case 'T':
+			return scanTrueLiteral
+		case 'F':
+			return scanFalseLiteral
+		case 'i':
+			return scanInt8Literal
+		case 'U':
+			return scanUint8Literal
+		case 'I':
+			return scanInt16Literal
+		case 'l':
+			return scanInt32Literal
+		case 'L':
+			return scanInt64Literal
+		}
+	*/
 	return s.error(c, "looking for beginning of value")
 }
 

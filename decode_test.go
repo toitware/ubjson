@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package json
+package ubjson
 
 import (
 	"bytes"
@@ -10,30 +10,26 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"math"
-	"math/big"
-	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 type T struct {
 	X string
 	Y int
-	Z int `json:"-"`
+	Z int `ubjson:"-"`
 }
 
 type U struct {
-	Alphabet string `json:"alpha"`
+	Alphabet string `ubjson:"alpha"`
 }
 
 type V struct {
 	F1 interface{}
 	F2 int32
-	F3 Number
+	//F3 Number
 	F4 *VOuter
 }
 
@@ -56,7 +52,7 @@ type PP struct {
 
 type SS string
 
-func (*SS) UnmarshalJSON(data []byte) error {
+func (*SS) UnmarshalUBJSON(data []byte) error {
 	return &UnmarshalTypeError{Value: "number", Type: reflect.TypeOf(SS(""))}
 }
 
@@ -388,7 +384,7 @@ type mapStringToStringData struct {
 }
 
 type unmarshalTest struct {
-	in                    string
+	in                    []byte
 	ptr                   interface{} // new(type)
 	out                   interface{}
 	err                   error
@@ -408,674 +404,600 @@ type DoublePtr struct {
 
 var unmarshalTests = []unmarshalTest{
 	// basic types
-	{in: `true`, ptr: new(bool), out: true},
-	{in: `1`, ptr: new(int), out: 1},
-	{in: `1.2`, ptr: new(float64), out: 1.2},
-	{in: `-5`, ptr: new(int16), out: int16(-5)},
-	{in: `2`, ptr: new(Number), out: Number("2"), useNumber: true},
-	{in: `2`, ptr: new(Number), out: Number("2")},
-	{in: `2`, ptr: new(interface{}), out: float64(2.0)},
-	{in: `2`, ptr: new(interface{}), out: Number("2"), useNumber: true},
-	{in: `"a\u1234"`, ptr: new(string), out: "a\u1234"},
-	{in: `"http:\/\/"`, ptr: new(string), out: "http://"},
-	{in: `"g-clef: \uD834\uDD1E"`, ptr: new(string), out: "g-clef: \U0001D11E"},
-	{in: `"invalid: \uD834x\uDD1E"`, ptr: new(string), out: "invalid: \uFFFDx\uFFFD"},
-	{in: "null", ptr: new(interface{}), out: nil},
-	{in: `{"X": [1,2,3], "Y": 4}`, ptr: new(T), out: T{Y: 4}, err: &UnmarshalTypeError{"array", reflect.TypeOf(""), 7, "T", "X"}},
-	{in: `{"X": 23}`, ptr: new(T), out: T{}, err: &UnmarshalTypeError{"number", reflect.TypeOf(""), 8, "T", "X"}}, {in: `{"x": 1}`, ptr: new(tx), out: tx{}},
-	{in: `{"x": 1}`, ptr: new(tx), out: tx{}},
-	{in: `{"x": 1}`, ptr: new(tx), err: fmt.Errorf("json: unknown field \"x\""), disallowUnknownFields: true},
-	{in: `{"S": 23}`, ptr: new(W), out: W{}, err: &UnmarshalTypeError{"number", reflect.TypeOf(SS("")), 0, "W", "S"}},
-	{in: `{"F1":1,"F2":2,"F3":3}`, ptr: new(V), out: V{F1: float64(1), F2: int32(2), F3: Number("3")}},
-	{in: `{"F1":1,"F2":2,"F3":3}`, ptr: new(V), out: V{F1: Number("1"), F2: int32(2), F3: Number("3")}, useNumber: true},
-	{in: `{"k1":1,"k2":"s","k3":[1,2.0,3e-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsFloat64},
-	{in: `{"k1":1,"k2":"s","k3":[1,2.0,3e-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsNumber, useNumber: true},
 
-	// raw values with whitespace
-	{in: "\n true ", ptr: new(bool), out: true},
-	{in: "\t 1 ", ptr: new(int), out: 1},
-	{in: "\r 1.2 ", ptr: new(float64), out: 1.2},
-	{in: "\t -5 \n", ptr: new(int16), out: int16(-5)},
-	{in: "\t \"a\\u1234\" \n", ptr: new(string), out: "a\u1234"},
+	{in: []byte{'T'}, ptr: new(bool), out: true},
+	{in: []byte{'i', 1}, ptr: new(int), out: 1},
+	{in: []byte{'U', 1}, ptr: new(int), out: 1},
+	{in: []byte{'I', 0, 1}, ptr: new(int), out: 1},
+	{in: []byte{'l', 0, 0, 0, 1}, ptr: new(int), out: 1},
+	{in: []byte{'L', 0, 0, 0, 0, 0, 0, 0, 1}, ptr: new(int), out: 1},
+	{in: []byte{'i', 255}, ptr: new(int), out: -1},
+	{in: []byte{'U', 255}, ptr: new(int), out: 255},
+	{in: []byte{'I', 255, 255}, ptr: new(int), out: -1},
+	{in: []byte{'l', 255, 255, 255, 255}, ptr: new(int), out: -1},
+	{in: []byte{'L', 255, 255, 255, 255, 255, 255, 255, 255}, ptr: new(int), out: -1},
+	/*
+		{in: `1.2`, ptr: new(float64), out: 1.2},
+		{in: `-5`, ptr: new(int16), out: int16(-5)},
+		{in: `2`, ptr: new(Number), out: Number("2"), useNumber: true},
+		{in: `2`, ptr: new(Number), out: Number("2")},
+		{in: `2`, ptr: new(interface{}), out: float64(2.0)},
+		{in: `2`, ptr: new(interface{}), out: Number("2"), useNumber: true},
+	*/
+	{in: []byte{'S', 'U', 4, 'a', "\u1234"[0], "\u1234"[1], "\u1234"[2]}, ptr: new(string), out: "a\u1234"},
+	{in: []byte{'S', 'U', 7, 'h', 't', 't', 'p', ':', '/', '/'}, ptr: new(string), out: "http://"},
+	/*
+		{in: `"g-clef: \uD834\uDD1E"`, ptr: new(string), out: "g-clef: \U0001D11E"},
+		{in: `"invalid: \uD834x\uDD1E"`, ptr: new(string), out: "invalid: \uFFFDx\uFFFD"},
+	*/
+	{in: []byte{'Z'}, ptr: new(interface{}), out: nil},
+	/*
+		{in: `{"X": [1,2,3], "Y": 4}`, ptr: new(T), out: T{Y: 4}, err: &UnmarshalTypeError{"array", reflect.TypeOf(""), 7, "T", "X"}},
+		{in: `{"X": 23}`, ptr: new(T), out: T{}, err: &UnmarshalTypeError{"number", reflect.TypeOf(""), 8, "T", "X"}}, {in: `{"x": 1}`, ptr: new(tx), out: tx{}},
+	*/
+	{in: []byte{'{', 'U', 1, 'x', 'U', 1, '}'}, ptr: new(tx), out: tx{}},
+	/*
+		{in: `{"x": 1}`, ptr: new(tx), err: fmt.Errorf("json: unknown field \"x\""), disallowUnknownFields: true},
+		{in: `{"S": 23}`, ptr: new(W), out: W{}, err: &UnmarshalTypeError{"number", reflect.TypeOf(SS("")), 0, "W", "S"}},
+		{in: `{"F1":1,"F2":2,"F3":3}`, ptr: new(V), out: V{F1: float64(1), F2: int32(2), F3: Number("3")}},
+		{in: `{"F1":1,"F2":2,"F3":3}`, ptr: new(V), out: V{F1: Number("1"), F2: int32(2), F3: Number("3")}, useNumber: true},
+		{in: `{"k1":1,"k2":"s","k3":[1,2.0,3e-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsFloat64},
+		{in: `{"k1":1,"k2":"s","k3":[1,2.0,3e-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsNumber, useNumber: true},
 
-	// Z has a "-" tag.
-	{in: `{"Y": 1, "Z": 2}`, ptr: new(T), out: T{Y: 1}},
-	{in: `{"Y": 1, "Z": 2}`, ptr: new(T), err: fmt.Errorf("json: unknown field \"Z\""), disallowUnknownFields: true},
+		// raw values with whitespace
+		{in: "\n true ", ptr: new(bool), out: true},
+		{in: "\t 1 ", ptr: new(int), out: 1},
+		{in: "\r 1.2 ", ptr: new(float64), out: 1.2},
+		{in: "\t -5 \n", ptr: new(int16), out: int16(-5)},
+		{in: "\t \"a\\u1234\" \n", ptr: new(string), out: "a\u1234"},
 
-	{in: `{"alpha": "abc", "alphabet": "xyz"}`, ptr: new(U), out: U{Alphabet: "abc"}},
-	{in: `{"alpha": "abc", "alphabet": "xyz"}`, ptr: new(U), err: fmt.Errorf("json: unknown field \"alphabet\""), disallowUnknownFields: true},
-	{in: `{"alpha": "abc"}`, ptr: new(U), out: U{Alphabet: "abc"}},
-	{in: `{"alphabet": "xyz"}`, ptr: new(U), out: U{}},
-	{in: `{"alphabet": "xyz"}`, ptr: new(U), err: fmt.Errorf("json: unknown field \"alphabet\""), disallowUnknownFields: true},
+		// Z has a "-" tag.
+	*/
+	{in: []byte{'{', 'U', 1, 'Y', 'U', 1, 'U', 1, 'Z', 'U', 2, '}'}, ptr: new(T), out: T{Y: 1}},
+	/*
+		{in: `{"Y": 1, "Z": 2}`, ptr: new(T), err: fmt.Errorf("json: unknown field \"Z\""), disallowUnknownFields: true},
 
-	// syntax errors
-	{in: `{"X": "foo", "Y"}`, err: &SyntaxError{"invalid character '}' after object key", 17}},
-	{in: `[1, 2, 3+]`, err: &SyntaxError{"invalid character '+' after array element", 9}},
-	{in: `{"X":12x}`, err: &SyntaxError{"invalid character 'x' after object key:value pair", 8}, useNumber: true},
-	{in: `[2, 3`, err: &SyntaxError{msg: "unexpected end of JSON input", Offset: 5}},
-	{in: `{"F3": -}`, ptr: new(V), out: V{F3: Number("-")}, err: &SyntaxError{msg: "invalid character '}' in numeric literal", Offset: 9}},
+		{in: `{"alpha": "abc", "alphabet": "xyz"}`, ptr: new(U), out: U{Alphabet: "abc"}},
+		{in: `{"alpha": "abc", "alphabet": "xyz"}`, ptr: new(U), err: fmt.Errorf("json: unknown field \"alphabet\""), disallowUnknownFields: true},
+		{in: `{"alpha": "abc"}`, ptr: new(U), out: U{Alphabet: "abc"}},
+		{in: `{"alphabet": "xyz"}`, ptr: new(U), out: U{}},
+		{in: `{"alphabet": "xyz"}`, ptr: new(U), err: fmt.Errorf("json: unknown field \"alphabet\""), disallowUnknownFields: true},
 
-	// raw value errors
-	{in: "\x01 42", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
-	{in: " 42 \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 5}},
-	{in: "\x01 true", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
-	{in: " false \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 8}},
-	{in: "\x01 1.2", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
-	{in: " 3.4 \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 6}},
-	{in: "\x01 \"string\"", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
-	{in: " \"string\" \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 11}},
+		// syntax errors
+		{in: `{"X": "foo", "Y"}`, err: &SyntaxError{"invalid character '}' after object key", 17}},
+		{in: `[1, 2, 3+]`, err: &SyntaxError{"invalid character '+' after array element", 9}},
+		{in: `{"X":12x}`, err: &SyntaxError{"invalid character 'x' after object key:value pair", 8}, useNumber: true},
+		{in: `[2, 3`, err: &SyntaxError{msg: "unexpected end of JSON input", Offset: 5}},
+		{in: `{"F3": -}`, ptr: new(V), out: V{F3: Number("-")}, err: &SyntaxError{msg: "invalid character '}' in numeric literal", Offset: 9}},
 
-	// array tests
-	{in: `[1, 2, 3]`, ptr: new([3]int), out: [3]int{1, 2, 3}},
-	{in: `[1, 2, 3]`, ptr: new([1]int), out: [1]int{1}},
-	{in: `[1, 2, 3]`, ptr: new([5]int), out: [5]int{1, 2, 3, 0, 0}},
-	{in: `[1, 2, 3]`, ptr: new(MustNotUnmarshalJSON), err: errors.New("MustNotUnmarshalJSON was used")},
+		// raw value errors
+		{in: "\x01 42", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
+		{in: " 42 \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 5}},
+		{in: "\x01 true", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
+		{in: " false \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 8}},
+		{in: "\x01 1.2", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
+		{in: " 3.4 \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 6}},
+		{in: "\x01 \"string\"", err: &SyntaxError{"invalid character '\\x01' looking for beginning of value", 1}},
+		{in: " \"string\" \x01", err: &SyntaxError{"invalid character '\\x01' after top-level value", 11}},
 
-	// empty array to interface test
-	{in: `[]`, ptr: new([]interface{}), out: []interface{}{}},
-	{in: `null`, ptr: new([]interface{}), out: []interface{}(nil)},
-	{in: `{"T":[]}`, ptr: new(map[string]interface{}), out: map[string]interface{}{"T": []interface{}{}}},
-	{in: `{"T":null}`, ptr: new(map[string]interface{}), out: map[string]interface{}{"T": interface{}(nil)}},
+		// array tests
+		{in: `[1, 2, 3]`, ptr: new([3]int), out: [3]int{1, 2, 3}},
+		{in: `[1, 2, 3]`, ptr: new([1]int), out: [1]int{1}},
+		{in: `[1, 2, 3]`, ptr: new([5]int), out: [5]int{1, 2, 3, 0, 0}},
+		{in: `[1, 2, 3]`, ptr: new(MustNotUnmarshalJSON), err: errors.New("MustNotUnmarshalJSON was used")},
 
-	// composite tests
-	{in: allValueIndent, ptr: new(All), out: allValue},
-	{in: allValueCompact, ptr: new(All), out: allValue},
-	{in: allValueIndent, ptr: new(*All), out: &allValue},
-	{in: allValueCompact, ptr: new(*All), out: &allValue},
-	{in: pallValueIndent, ptr: new(All), out: pallValue},
-	{in: pallValueCompact, ptr: new(All), out: pallValue},
-	{in: pallValueIndent, ptr: new(*All), out: &pallValue},
-	{in: pallValueCompact, ptr: new(*All), out: &pallValue},
+		// empty array to interface test
+		{in: `[]`, ptr: new([]interface{}), out: []interface{}{}},
+		{in: `null`, ptr: new([]interface{}), out: []interface{}(nil)},
+		{in: `{"T":[]}`, ptr: new(map[string]interface{}), out: map[string]interface{}{"T": []interface{}{}}},
+	*/
+	{in: []byte{'{', 'i', 1, 'T', 'Z', '}'}, ptr: new(map[string]interface{}), out: map[string]interface{}{"T": interface{}(nil)}},
+	/*
 
-	// unmarshal interface test
-	{in: `{"T":false}`, ptr: new(unmarshaler), out: umtrue}, // use "false" so test will fail if custom unmarshaler is not called
-	{in: `{"T":false}`, ptr: new(*unmarshaler), out: &umtrue},
-	{in: `[{"T":false}]`, ptr: new([]unmarshaler), out: umslice},
-	{in: `[{"T":false}]`, ptr: new(*[]unmarshaler), out: &umslice},
-	{in: `{"M":{"T":"x:y"}}`, ptr: new(ustruct), out: umstruct},
+		// composite tests
+		{in: allValueIndent, ptr: new(All), out: allValue},
+		{in: allValueCompact, ptr: new(All), out: allValue},
+		{in: allValueIndent, ptr: new(*All), out: &allValue},
+		{in: allValueCompact, ptr: new(*All), out: &allValue},
+		{in: pallValueIndent, ptr: new(All), out: pallValue},
+		{in: pallValueCompact, ptr: new(All), out: pallValue},
+		{in: pallValueIndent, ptr: new(*All), out: &pallValue},
+		{in: pallValueCompact, ptr: new(*All), out: &pallValue},
 
-	// UnmarshalText interface test
-	{in: `"x:y"`, ptr: new(unmarshalerText), out: umtrueXY},
-	{in: `"x:y"`, ptr: new(*unmarshalerText), out: &umtrueXY},
-	{in: `["x:y"]`, ptr: new([]unmarshalerText), out: umsliceXY},
-	{in: `["x:y"]`, ptr: new(*[]unmarshalerText), out: &umsliceXY},
-	{in: `{"M":"x:y"}`, ptr: new(ustructText), out: umstructXY},
+		// unmarshal interface test
+		{in: `{"T":false}`, ptr: new(unmarshaler), out: umtrue}, // use "false" so test will fail if custom unmarshaler is not called
+		{in: `{"T":false}`, ptr: new(*unmarshaler), out: &umtrue},
+		{in: `[{"T":false}]`, ptr: new([]unmarshaler), out: umslice},
+		{in: `[{"T":false}]`, ptr: new(*[]unmarshaler), out: &umslice},
+		{in: `{"M":{"T":"x:y"}}`, ptr: new(ustruct), out: umstruct},
 
-	// integer-keyed map test
-	{
-		in:  `{"-1":"a","0":"b","1":"c"}`,
-		ptr: new(map[int]string),
-		out: map[int]string{-1: "a", 0: "b", 1: "c"},
-	},
-	{
-		in:  `{"0":"a","10":"c","9":"b"}`,
-		ptr: new(map[u8]string),
-		out: map[u8]string{0: "a", 9: "b", 10: "c"},
-	},
-	{
-		in:  `{"-9223372036854775808":"min","9223372036854775807":"max"}`,
-		ptr: new(map[int64]string),
-		out: map[int64]string{math.MinInt64: "min", math.MaxInt64: "max"},
-	},
-	{
-		in:  `{"18446744073709551615":"max"}`,
-		ptr: new(map[uint64]string),
-		out: map[uint64]string{math.MaxUint64: "max"},
-	},
-	{
-		in:  `{"0":false,"10":true}`,
-		ptr: new(map[uintptr]bool),
-		out: map[uintptr]bool{0: false, 10: true},
-	},
+		// UnmarshalText interface test
+		{in: `"x:y"`, ptr: new(unmarshalerText), out: umtrueXY},
+		{in: `"x:y"`, ptr: new(*unmarshalerText), out: &umtrueXY},
+		{in: `["x:y"]`, ptr: new([]unmarshalerText), out: umsliceXY},
+		{in: `["x:y"]`, ptr: new(*[]unmarshalerText), out: &umsliceXY},
+		{in: `{"M":"x:y"}`, ptr: new(ustructText), out: umstructXY},
 
-	// Check that MarshalText and UnmarshalText take precedence
-	// over default integer handling in map keys.
-	{
-		in:  `{"u2":4}`,
-		ptr: new(map[u8marshal]int),
-		out: map[u8marshal]int{2: 4},
-	},
-	{
-		in:  `{"2":4}`,
-		ptr: new(map[u8marshal]int),
-		err: errMissingU8Prefix,
-	},
+		// integer-keyed map test
+		{
+			in:  `{"-1":"a","0":"b","1":"c"}`,
+			ptr: new(map[int]string),
+			out: map[int]string{-1: "a", 0: "b", 1: "c"},
+		},
+		{
+			in:  `{"0":"a","10":"c","9":"b"}`,
+			ptr: new(map[u8]string),
+			out: map[u8]string{0: "a", 9: "b", 10: "c"},
+		},
+		{
+			in:  `{"-9223372036854775808":"min","9223372036854775807":"max"}`,
+			ptr: new(map[int64]string),
+			out: map[int64]string{math.MinInt64: "min", math.MaxInt64: "max"},
+		},
+		{
+			in:  `{"18446744073709551615":"max"}`,
+			ptr: new(map[uint64]string),
+			out: map[uint64]string{math.MaxUint64: "max"},
+		},
+		{
+			in:  `{"0":false,"10":true}`,
+			ptr: new(map[uintptr]bool),
+			out: map[uintptr]bool{0: false, 10: true},
+		},
 
-	// integer-keyed map errors
-	{
-		in:  `{"abc":"abc"}`,
-		ptr: new(map[int]string),
-		err: &UnmarshalTypeError{Value: "number abc", Type: reflect.TypeOf(0), Offset: 2},
-	},
-	{
-		in:  `{"256":"abc"}`,
-		ptr: new(map[uint8]string),
-		err: &UnmarshalTypeError{Value: "number 256", Type: reflect.TypeOf(uint8(0)), Offset: 2},
-	},
-	{
-		in:  `{"128":"abc"}`,
-		ptr: new(map[int8]string),
-		err: &UnmarshalTypeError{Value: "number 128", Type: reflect.TypeOf(int8(0)), Offset: 2},
-	},
-	{
-		in:  `{"-1":"abc"}`,
-		ptr: new(map[uint8]string),
-		err: &UnmarshalTypeError{Value: "number -1", Type: reflect.TypeOf(uint8(0)), Offset: 2},
-	},
-	{
-		in:  `{"F":{"a":2,"3":4}}`,
-		ptr: new(map[string]map[int]int),
-		err: &UnmarshalTypeError{Value: "number a", Type: reflect.TypeOf(int(0)), Offset: 7},
-	},
-	{
-		in:  `{"F":{"a":2,"3":4}}`,
-		ptr: new(map[string]map[uint]int),
-		err: &UnmarshalTypeError{Value: "number a", Type: reflect.TypeOf(uint(0)), Offset: 7},
-	},
+		// Check that MarshalText and UnmarshalText take precedence
+		// over default integer handling in map keys.
+		{
+			in:  `{"u2":4}`,
+			ptr: new(map[u8marshal]int),
+			out: map[u8marshal]int{2: 4},
+		},
+		{
+			in:  `{"2":4}`,
+			ptr: new(map[u8marshal]int),
+			err: errMissingU8Prefix,
+		},
 
-	// Map keys can be encoding.TextUnmarshalers.
-	{in: `{"x:y":true}`, ptr: new(map[unmarshalerText]bool), out: ummapXY},
-	// If multiple values for the same key exists, only the most recent value is used.
-	{in: `{"x:y":false,"x:y":true}`, ptr: new(map[unmarshalerText]bool), out: ummapXY},
+		// integer-keyed map errors
+		{
+			in:  `{"abc":"abc"}`,
+			ptr: new(map[int]string),
+			err: &UnmarshalTypeError{Value: "number abc", Type: reflect.TypeOf(0), Offset: 2},
+		},
+		{
+			in:  `{"256":"abc"}`,
+			ptr: new(map[uint8]string),
+			err: &UnmarshalTypeError{Value: "number 256", Type: reflect.TypeOf(uint8(0)), Offset: 2},
+		},
+		{
+			in:  `{"128":"abc"}`,
+			ptr: new(map[int8]string),
+			err: &UnmarshalTypeError{Value: "number 128", Type: reflect.TypeOf(int8(0)), Offset: 2},
+		},
+		{
+			in:  `{"-1":"abc"}`,
+			ptr: new(map[uint8]string),
+			err: &UnmarshalTypeError{Value: "number -1", Type: reflect.TypeOf(uint8(0)), Offset: 2},
+		},
+		{
+			in:  `{"F":{"a":2,"3":4}}`,
+			ptr: new(map[string]map[int]int),
+			err: &UnmarshalTypeError{Value: "number a", Type: reflect.TypeOf(int(0)), Offset: 7},
+		},
+		{
+			in:  `{"F":{"a":2,"3":4}}`,
+			ptr: new(map[string]map[uint]int),
+			err: &UnmarshalTypeError{Value: "number a", Type: reflect.TypeOf(uint(0)), Offset: 7},
+		},
 
-	{
-		in: `{
-			"Level0": 1,
-			"Level1b": 2,
-			"Level1c": 3,
-			"x": 4,
-			"Level1a": 5,
-			"LEVEL1B": 6,
-			"e": {
-				"Level1a": 8,
-				"Level1b": 9,
-				"Level1c": 10,
-				"Level1d": 11,
-				"x": 12
+		// Map keys can be encoding.TextUnmarshalers.
+		{in: `{"x:y":true}`, ptr: new(map[unmarshalerText]bool), out: ummapXY},
+		// If multiple values for the same key exists, only the most recent value is used.
+		{in: `{"x:y":false,"x:y":true}`, ptr: new(map[unmarshalerText]bool), out: ummapXY},
+
+		{
+			in: `{
+				"Level0": 1,
+				"Level1b": 2,
+				"Level1c": 3,
+				"x": 4,
+				"Level1a": 5,
+				"LEVEL1B": 6,
+				"e": {
+					"Level1a": 8,
+					"Level1b": 9,
+					"Level1c": 10,
+					"Level1d": 11,
+					"x": 12
+				},
+				"Loop1": 13,
+				"Loop2": 14,
+				"X": 15,
+				"Y": 16,
+				"Z": 17,
+				"Q": 18
+			}`,
+			ptr: new(Top),
+			out: Top{
+				Level0: 1,
+				Embed0: Embed0{
+					Level1b: 2,
+					Level1c: 3,
+				},
+				Embed0a: &Embed0a{
+					Level1a: 5,
+					Level1b: 6,
+				},
+				Embed0b: &Embed0b{
+					Level1a: 8,
+					Level1b: 9,
+					Level1c: 10,
+					Level1d: 11,
+					Level1e: 12,
+				},
+				Loop: Loop{
+					Loop1: 13,
+					Loop2: 14,
+				},
+				Embed0p: Embed0p{
+					Point: image.Point{X: 15, Y: 16},
+				},
+				Embed0q: Embed0q{
+					Point: Point{Z: 17},
+				},
+				embed: embed{
+					Q: 18,
+				},
 			},
-			"Loop1": 13,
-			"Loop2": 14,
-			"X": 15,
-			"Y": 16,
-			"Z": 17,
-			"Q": 18
-		}`,
-		ptr: new(Top),
-		out: Top{
-			Level0: 1,
-			Embed0: Embed0{
-				Level1b: 2,
-				Level1c: 3,
+		},
+		{
+			in:  `{"hello": 1}`,
+			ptr: new(Ambig),
+			out: Ambig{First: 1},
+		},
+
+		{
+			in:  `{"X": 1,"Y":2}`,
+			ptr: new(S5),
+			out: S5{S8: S8{S9: S9{Y: 2}}},
+		},
+		{
+			in:                    `{"X": 1,"Y":2}`,
+			ptr:                   new(S5),
+			err:                   fmt.Errorf("json: unknown field \"X\""),
+			disallowUnknownFields: true,
+		},
+		{
+			in:  `{"X": 1,"Y":2}`,
+			ptr: new(S10),
+			out: S10{S13: S13{S8: S8{S9: S9{Y: 2}}}},
+		},
+		{
+			in:                    `{"X": 1,"Y":2}`,
+			ptr:                   new(S10),
+			err:                   fmt.Errorf("json: unknown field \"X\""),
+			disallowUnknownFields: true,
+		},
+		{
+			in:  `{"I": 0, "I": null, "J": null}`,
+			ptr: new(DoublePtr),
+			out: DoublePtr{I: nil, J: nil},
+		},
+
+		// invalid UTF-8 is coerced to valid UTF-8.
+		{
+			in:  "\"hello\xffworld\"",
+			ptr: new(string),
+			out: "hello\ufffdworld",
+		},
+		{
+			in:  "\"hello\xc2\xc2world\"",
+			ptr: new(string),
+			out: "hello\ufffd\ufffdworld",
+		},
+		{
+			in:  "\"hello\xc2\xffworld\"",
+			ptr: new(string),
+			out: "hello\ufffd\ufffdworld",
+		},
+		{
+			in:  "\"hello\\ud800world\"",
+			ptr: new(string),
+			out: "hello\ufffdworld",
+		},
+		{
+			in:  "\"hello\\ud800\\ud800world\"",
+			ptr: new(string),
+			out: "hello\ufffd\ufffdworld",
+		},
+		{
+			in:  "\"hello\\ud800\\ud800world\"",
+			ptr: new(string),
+			out: "hello\ufffd\ufffdworld",
+		},
+		{
+			in:  "\"hello\xed\xa0\x80\xed\xb0\x80world\"",
+			ptr: new(string),
+			out: "hello\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdworld",
+		},
+
+		// Used to be issue 8305, but time.Time implements encoding.TextUnmarshaler so this works now.
+		{
+			in:  `{"2009-11-10T23:00:00Z": "hello world"}`,
+			ptr: new(map[time.Time]string),
+			out: map[time.Time]string{time.Date(2009, 11, 10, 23, 0, 0, 0, time.UTC): "hello world"},
+		},
+
+		// issue 8305
+		{
+			in:  `{"2009-11-10T23:00:00Z": "hello world"}`,
+			ptr: new(map[Point]string),
+			err: &UnmarshalTypeError{Value: "object", Type: reflect.TypeOf(map[Point]string{}), Offset: 1},
+		},
+		{
+			in:  `{"asdf": "hello world"}`,
+			ptr: new(map[unmarshaler]string),
+			err: &UnmarshalTypeError{Value: "object", Type: reflect.TypeOf(map[unmarshaler]string{}), Offset: 1},
+		},
+
+		// related to issue 13783.
+		// Go 1.7 changed marshaling a slice of typed byte to use the methods on the byte type,
+		// similar to marshaling a slice of typed int.
+		// These tests check that, assuming the byte type also has valid decoding methods,
+		// either the old base64 string encoding or the new per-element encoding can be
+		// successfully unmarshaled. The custom unmarshalers were accessible in earlier
+		// versions of Go, even though the custom marshaler was not.
+		{
+			in:  `"AQID"`,
+			ptr: new([]byteWithMarshalJSON),
+			out: []byteWithMarshalJSON{1, 2, 3},
+		},
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]byteWithMarshalJSON),
+			out:    []byteWithMarshalJSON{1, 2, 3},
+			golden: true,
+		},
+		{
+			in:  `"AQID"`,
+			ptr: new([]byteWithMarshalText),
+			out: []byteWithMarshalText{1, 2, 3},
+		},
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]byteWithMarshalText),
+			out:    []byteWithMarshalText{1, 2, 3},
+			golden: true,
+		},
+		{
+			in:  `"AQID"`,
+			ptr: new([]byteWithPtrMarshalJSON),
+			out: []byteWithPtrMarshalJSON{1, 2, 3},
+		},
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]byteWithPtrMarshalJSON),
+			out:    []byteWithPtrMarshalJSON{1, 2, 3},
+			golden: true,
+		},
+		{
+			in:  `"AQID"`,
+			ptr: new([]byteWithPtrMarshalText),
+			out: []byteWithPtrMarshalText{1, 2, 3},
+		},
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]byteWithPtrMarshalText),
+			out:    []byteWithPtrMarshalText{1, 2, 3},
+			golden: true,
+		},
+
+		// ints work with the marshaler but not the base64 []byte case
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]intWithMarshalJSON),
+			out:    []intWithMarshalJSON{1, 2, 3},
+			golden: true,
+		},
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]intWithMarshalText),
+			out:    []intWithMarshalText{1, 2, 3},
+			golden: true,
+		},
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]intWithPtrMarshalJSON),
+			out:    []intWithPtrMarshalJSON{1, 2, 3},
+			golden: true,
+		},
+		{
+			in:     `["Z01","Z02","Z03"]`,
+			ptr:    new([]intWithPtrMarshalText),
+			out:    []intWithPtrMarshalText{1, 2, 3},
+			golden: true,
+		},
+
+		{in: `0.000001`, ptr: new(float64), out: 0.000001, golden: true},
+		{in: `1e-7`, ptr: new(float64), out: 1e-7, golden: true},
+		{in: `100000000000000000000`, ptr: new(float64), out: 100000000000000000000.0, golden: true},
+		{in: `1e+21`, ptr: new(float64), out: 1e21, golden: true},
+		{in: `-0.000001`, ptr: new(float64), out: -0.000001, golden: true},
+		{in: `-1e-7`, ptr: new(float64), out: -1e-7, golden: true},
+		{in: `-100000000000000000000`, ptr: new(float64), out: -100000000000000000000.0, golden: true},
+		{in: `-1e+21`, ptr: new(float64), out: -1e21, golden: true},
+		{in: `999999999999999900000`, ptr: new(float64), out: 999999999999999900000.0, golden: true},
+		{in: `9007199254740992`, ptr: new(float64), out: 9007199254740992.0, golden: true},
+		{in: `9007199254740993`, ptr: new(float64), out: 9007199254740992.0, golden: false},
+
+		{
+			in:  `{"V": {"F2": "hello"}}`,
+			ptr: new(VOuter),
+			err: &UnmarshalTypeError{
+				Value:  "string",
+				Struct: "V",
+				Field:  "V.F2",
+				Type:   reflect.TypeOf(int32(0)),
+				Offset: 20,
 			},
-			Embed0a: &Embed0a{
-				Level1a: 5,
-				Level1b: 6,
-			},
-			Embed0b: &Embed0b{
-				Level1a: 8,
-				Level1b: 9,
-				Level1c: 10,
-				Level1d: 11,
-				Level1e: 12,
-			},
-			Loop: Loop{
-				Loop1: 13,
-				Loop2: 14,
-			},
-			Embed0p: Embed0p{
-				Point: image.Point{X: 15, Y: 16},
-			},
-			Embed0q: Embed0q{
-				Point: Point{Z: 17},
-			},
-			embed: embed{
-				Q: 18,
+		},
+		{
+			in:  `{"V": {"F4": {}, "F2": "hello"}}`,
+			ptr: new(VOuter),
+			err: &UnmarshalTypeError{
+				Value:  "string",
+				Struct: "V",
+				Field:  "V.F2",
+				Type:   reflect.TypeOf(int32(0)),
+				Offset: 30,
 			},
 		},
-	},
-	{
-		in:  `{"hello": 1}`,
-		ptr: new(Ambig),
-		out: Ambig{First: 1},
-	},
 
-	{
-		in:  `{"X": 1,"Y":2}`,
-		ptr: new(S5),
-		out: S5{S8: S8{S9: S9{Y: 2}}},
-	},
-	{
-		in:                    `{"X": 1,"Y":2}`,
-		ptr:                   new(S5),
-		err:                   fmt.Errorf("json: unknown field \"X\""),
-		disallowUnknownFields: true,
-	},
-	{
-		in:  `{"X": 1,"Y":2}`,
-		ptr: new(S10),
-		out: S10{S13: S13{S8: S8{S9: S9{Y: 2}}}},
-	},
-	{
-		in:                    `{"X": 1,"Y":2}`,
-		ptr:                   new(S10),
-		err:                   fmt.Errorf("json: unknown field \"X\""),
-		disallowUnknownFields: true,
-	},
-	{
-		in:  `{"I": 0, "I": null, "J": null}`,
-		ptr: new(DoublePtr),
-		out: DoublePtr{I: nil, J: nil},
-	},
+		// issue 15146.
+		// invalid inputs in wrongStringTests below.
+		{in: `{"B":"true"}`, ptr: new(B), out: B{true}, golden: true},
+		{in: `{"B":"false"}`, ptr: new(B), out: B{false}, golden: true},
+		{in: `{"B": "maybe"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "maybe" into bool`)},
+		{in: `{"B": "tru"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "tru" into bool`)},
+		{in: `{"B": "False"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "False" into bool`)},
+		{in: `{"B": "null"}`, ptr: new(B), out: B{false}},
+		{in: `{"B": "nul"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "nul" into bool`)},
+		{in: `{"B": [2, 3]}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal unquoted value into bool`)},
 
-	// invalid UTF-8 is coerced to valid UTF-8.
-	{
-		in:  "\"hello\xffworld\"",
-		ptr: new(string),
-		out: "hello\ufffdworld",
-	},
-	{
-		in:  "\"hello\xc2\xc2world\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
-	},
-	{
-		in:  "\"hello\xc2\xffworld\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
-	},
-	{
-		in:  "\"hello\\ud800world\"",
-		ptr: new(string),
-		out: "hello\ufffdworld",
-	},
-	{
-		in:  "\"hello\\ud800\\ud800world\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
-	},
-	{
-		in:  "\"hello\\ud800\\ud800world\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
-	},
-	{
-		in:  "\"hello\xed\xa0\x80\xed\xb0\x80world\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdworld",
-	},
-
-	// Used to be issue 8305, but time.Time implements encoding.TextUnmarshaler so this works now.
-	{
-		in:  `{"2009-11-10T23:00:00Z": "hello world"}`,
-		ptr: new(map[time.Time]string),
-		out: map[time.Time]string{time.Date(2009, 11, 10, 23, 0, 0, 0, time.UTC): "hello world"},
-	},
-
-	// issue 8305
-	{
-		in:  `{"2009-11-10T23:00:00Z": "hello world"}`,
-		ptr: new(map[Point]string),
-		err: &UnmarshalTypeError{Value: "object", Type: reflect.TypeOf(map[Point]string{}), Offset: 1},
-	},
-	{
-		in:  `{"asdf": "hello world"}`,
-		ptr: new(map[unmarshaler]string),
-		err: &UnmarshalTypeError{Value: "object", Type: reflect.TypeOf(map[unmarshaler]string{}), Offset: 1},
-	},
-
-	// related to issue 13783.
-	// Go 1.7 changed marshaling a slice of typed byte to use the methods on the byte type,
-	// similar to marshaling a slice of typed int.
-	// These tests check that, assuming the byte type also has valid decoding methods,
-	// either the old base64 string encoding or the new per-element encoding can be
-	// successfully unmarshaled. The custom unmarshalers were accessible in earlier
-	// versions of Go, even though the custom marshaler was not.
-	{
-		in:  `"AQID"`,
-		ptr: new([]byteWithMarshalJSON),
-		out: []byteWithMarshalJSON{1, 2, 3},
-	},
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]byteWithMarshalJSON),
-		out:    []byteWithMarshalJSON{1, 2, 3},
-		golden: true,
-	},
-	{
-		in:  `"AQID"`,
-		ptr: new([]byteWithMarshalText),
-		out: []byteWithMarshalText{1, 2, 3},
-	},
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]byteWithMarshalText),
-		out:    []byteWithMarshalText{1, 2, 3},
-		golden: true,
-	},
-	{
-		in:  `"AQID"`,
-		ptr: new([]byteWithPtrMarshalJSON),
-		out: []byteWithPtrMarshalJSON{1, 2, 3},
-	},
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]byteWithPtrMarshalJSON),
-		out:    []byteWithPtrMarshalJSON{1, 2, 3},
-		golden: true,
-	},
-	{
-		in:  `"AQID"`,
-		ptr: new([]byteWithPtrMarshalText),
-		out: []byteWithPtrMarshalText{1, 2, 3},
-	},
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]byteWithPtrMarshalText),
-		out:    []byteWithPtrMarshalText{1, 2, 3},
-		golden: true,
-	},
-
-	// ints work with the marshaler but not the base64 []byte case
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]intWithMarshalJSON),
-		out:    []intWithMarshalJSON{1, 2, 3},
-		golden: true,
-	},
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]intWithMarshalText),
-		out:    []intWithMarshalText{1, 2, 3},
-		golden: true,
-	},
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]intWithPtrMarshalJSON),
-		out:    []intWithPtrMarshalJSON{1, 2, 3},
-		golden: true,
-	},
-	{
-		in:     `["Z01","Z02","Z03"]`,
-		ptr:    new([]intWithPtrMarshalText),
-		out:    []intWithPtrMarshalText{1, 2, 3},
-		golden: true,
-	},
-
-	{in: `0.000001`, ptr: new(float64), out: 0.000001, golden: true},
-	{in: `1e-7`, ptr: new(float64), out: 1e-7, golden: true},
-	{in: `100000000000000000000`, ptr: new(float64), out: 100000000000000000000.0, golden: true},
-	{in: `1e+21`, ptr: new(float64), out: 1e21, golden: true},
-	{in: `-0.000001`, ptr: new(float64), out: -0.000001, golden: true},
-	{in: `-1e-7`, ptr: new(float64), out: -1e-7, golden: true},
-	{in: `-100000000000000000000`, ptr: new(float64), out: -100000000000000000000.0, golden: true},
-	{in: `-1e+21`, ptr: new(float64), out: -1e21, golden: true},
-	{in: `999999999999999900000`, ptr: new(float64), out: 999999999999999900000.0, golden: true},
-	{in: `9007199254740992`, ptr: new(float64), out: 9007199254740992.0, golden: true},
-	{in: `9007199254740993`, ptr: new(float64), out: 9007199254740992.0, golden: false},
-
-	{
-		in:  `{"V": {"F2": "hello"}}`,
-		ptr: new(VOuter),
-		err: &UnmarshalTypeError{
-			Value:  "string",
-			Struct: "V",
-			Field:  "V.F2",
-			Type:   reflect.TypeOf(int32(0)),
-			Offset: 20,
+		// additional tests for disallowUnknownFields
+		{
+			in: `{
+				"Level0": 1,
+				"Level1b": 2,
+				"Level1c": 3,
+				"x": 4,
+				"Level1a": 5,
+				"LEVEL1B": 6,
+				"e": {
+					"Level1a": 8,
+					"Level1b": 9,
+					"Level1c": 10,
+					"Level1d": 11,
+					"x": 12
+				},
+				"Loop1": 13,
+				"Loop2": 14,
+				"X": 15,
+				"Y": 16,
+				"Z": 17,
+				"Q": 18,
+				"extra": true
+			}`,
+			ptr:                   new(Top),
+			err:                   fmt.Errorf("json: unknown field \"extra\""),
+			disallowUnknownFields: true,
 		},
-	},
-	{
-		in:  `{"V": {"F4": {}, "F2": "hello"}}`,
-		ptr: new(VOuter),
-		err: &UnmarshalTypeError{
-			Value:  "string",
-			Struct: "V",
-			Field:  "V.F2",
-			Type:   reflect.TypeOf(int32(0)),
-			Offset: 30,
+		{
+			in: `{
+				"Level0": 1,
+				"Level1b": 2,
+				"Level1c": 3,
+				"x": 4,
+				"Level1a": 5,
+				"LEVEL1B": 6,
+				"e": {
+					"Level1a": 8,
+					"Level1b": 9,
+					"Level1c": 10,
+					"Level1d": 11,
+					"x": 12,
+					"extra": null
+				},
+				"Loop1": 13,
+				"Loop2": 14,
+				"X": 15,
+				"Y": 16,
+				"Z": 17,
+				"Q": 18
+			}`,
+			ptr:                   new(Top),
+			err:                   fmt.Errorf("json: unknown field \"extra\""),
+			disallowUnknownFields: true,
 		},
-	},
+		// issue 26444
+		// UnmarshalTypeError without field & struct values
+		{
+			in:  `{"data":{"test1": "bob", "test2": 123}}`,
+			ptr: new(mapStringToStringData),
+			err: &UnmarshalTypeError{Value: "number", Type: reflect.TypeOf(""), Offset: 37, Struct: "mapStringToStringData", Field: "data"},
+		},
+		{
+			in:  `{"data":{"test1": 123, "test2": "bob"}}`,
+			ptr: new(mapStringToStringData),
+			err: &UnmarshalTypeError{Value: "number", Type: reflect.TypeOf(""), Offset: 21, Struct: "mapStringToStringData", Field: "data"},
+		},
 
-	// issue 15146.
-	// invalid inputs in wrongStringTests below.
-	{in: `{"B":"true"}`, ptr: new(B), out: B{true}, golden: true},
-	{in: `{"B":"false"}`, ptr: new(B), out: B{false}, golden: true},
-	{in: `{"B": "maybe"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "maybe" into bool`)},
-	{in: `{"B": "tru"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "tru" into bool`)},
-	{in: `{"B": "False"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "False" into bool`)},
-	{in: `{"B": "null"}`, ptr: new(B), out: B{false}},
-	{in: `{"B": "nul"}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal "nul" into bool`)},
-	{in: `{"B": [2, 3]}`, ptr: new(B), err: errors.New(`json: invalid use of ,string struct tag, trying to unmarshal unquoted value into bool`)},
-
-	// additional tests for disallowUnknownFields
-	{
-		in: `{
-			"Level0": 1,
-			"Level1b": 2,
-			"Level1c": 3,
-			"x": 4,
-			"Level1a": 5,
-			"LEVEL1B": 6,
-			"e": {
-				"Level1a": 8,
-				"Level1b": 9,
-				"Level1c": 10,
-				"Level1d": 11,
-				"x": 12
+		// trying to decode JSON arrays or objects via TextUnmarshaler
+		{
+			in:  `[1, 2, 3]`,
+			ptr: new(MustNotUnmarshalText),
+			err: &UnmarshalTypeError{Value: "array", Type: reflect.TypeOf(&MustNotUnmarshalText{}), Offset: 1},
+		},
+		{
+			in:  `{"foo": "bar"}`,
+			ptr: new(MustNotUnmarshalText),
+			err: &UnmarshalTypeError{Value: "object", Type: reflect.TypeOf(&MustNotUnmarshalText{}), Offset: 1},
+		},
+		// #22369
+		{
+			in:  `{"PP": {"T": {"Y": "bad-type"}}}`,
+			ptr: new(P),
+			err: &UnmarshalTypeError{
+				Value:  "string",
+				Struct: "T",
+				Field:  "PP.T.Y",
+				Type:   reflect.TypeOf(int(0)),
+				Offset: 29,
 			},
-			"Loop1": 13,
-			"Loop2": 14,
-			"X": 15,
-			"Y": 16,
-			"Z": 17,
-			"Q": 18,
-			"extra": true
-		}`,
-		ptr:                   new(Top),
-		err:                   fmt.Errorf("json: unknown field \"extra\""),
-		disallowUnknownFields: true,
-	},
-	{
-		in: `{
-			"Level0": 1,
-			"Level1b": 2,
-			"Level1c": 3,
-			"x": 4,
-			"Level1a": 5,
-			"LEVEL1B": 6,
-			"e": {
-				"Level1a": 8,
-				"Level1b": 9,
-				"Level1c": 10,
-				"Level1d": 11,
-				"x": 12,
-				"extra": null
+		},
+		{
+			in:  `{"Ts": [{"Y": 1}, {"Y": 2}, {"Y": "bad-type"}]}`,
+			ptr: new(PP),
+			err: &UnmarshalTypeError{
+				Value:  "string",
+				Struct: "T",
+				Field:  "Ts.Y",
+				Type:   reflect.TypeOf(int(0)),
+				Offset: 29,
 			},
-			"Loop1": 13,
-			"Loop2": 14,
-			"X": 15,
-			"Y": 16,
-			"Z": 17,
-			"Q": 18
-		}`,
-		ptr:                   new(Top),
-		err:                   fmt.Errorf("json: unknown field \"extra\""),
-		disallowUnknownFields: true,
-	},
-	// issue 26444
-	// UnmarshalTypeError without field & struct values
-	{
-		in:  `{"data":{"test1": "bob", "test2": 123}}`,
-		ptr: new(mapStringToStringData),
-		err: &UnmarshalTypeError{Value: "number", Type: reflect.TypeOf(""), Offset: 37, Struct: "mapStringToStringData", Field: "data"},
-	},
-	{
-		in:  `{"data":{"test1": 123, "test2": "bob"}}`,
-		ptr: new(mapStringToStringData),
-		err: &UnmarshalTypeError{Value: "number", Type: reflect.TypeOf(""), Offset: 21, Struct: "mapStringToStringData", Field: "data"},
-	},
-
-	// trying to decode JSON arrays or objects via TextUnmarshaler
-	{
-		in:  `[1, 2, 3]`,
-		ptr: new(MustNotUnmarshalText),
-		err: &UnmarshalTypeError{Value: "array", Type: reflect.TypeOf(&MustNotUnmarshalText{}), Offset: 1},
-	},
-	{
-		in:  `{"foo": "bar"}`,
-		ptr: new(MustNotUnmarshalText),
-		err: &UnmarshalTypeError{Value: "object", Type: reflect.TypeOf(&MustNotUnmarshalText{}), Offset: 1},
-	},
-	// #22369
-	{
-		in:  `{"PP": {"T": {"Y": "bad-type"}}}`,
-		ptr: new(P),
-		err: &UnmarshalTypeError{
-			Value:  "string",
-			Struct: "T",
-			Field:  "PP.T.Y",
-			Type:   reflect.TypeOf(int(0)),
-			Offset: 29,
 		},
-	},
-	{
-		in:  `{"Ts": [{"Y": 1}, {"Y": 2}, {"Y": "bad-type"}]}`,
-		ptr: new(PP),
-		err: &UnmarshalTypeError{
-			Value:  "string",
-			Struct: "T",
-			Field:  "Ts.Y",
-			Type:   reflect.TypeOf(int(0)),
-			Offset: 29,
+		// #14702
+		{
+			in:  `invalid`,
+			ptr: new(Number),
+			err: &SyntaxError{
+				msg:    "invalid character 'i' looking for beginning of value",
+				Offset: 1,
+			},
 		},
-	},
-	// #14702
-	{
-		in:  `invalid`,
-		ptr: new(Number),
-		err: &SyntaxError{
-			msg:    "invalid character 'i' looking for beginning of value",
-			Offset: 1,
+		{
+			in:  `"invalid"`,
+			ptr: new(Number),
+			err: fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", `"invalid"`),
 		},
-	},
-	{
-		in:  `"invalid"`,
-		ptr: new(Number),
-		err: fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", `"invalid"`),
-	},
-	{
-		in:  `{"A":"invalid"}`,
-		ptr: new(struct{ A Number }),
-		err: fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", `"invalid"`),
-	},
-	{
-		in: `{"A":"invalid"}`,
-		ptr: new(struct {
-			A Number `json:",string"`
-		}),
-		err: fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into json.Number", `invalid`),
-	},
-	{
-		in:  `{"A":"invalid"}`,
-		ptr: new(map[string]Number),
-		err: fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", `"invalid"`),
-	},
-}
-
-func TestMarshal(t *testing.T) {
-	b, err := Marshal(allValue)
-	if err != nil {
-		t.Fatalf("Marshal allValue: %v", err)
-	}
-	if string(b) != allValueCompact {
-		t.Errorf("Marshal allValueCompact")
-		diff(t, b, []byte(allValueCompact))
-		return
-	}
-
-	b, err = Marshal(pallValue)
-	if err != nil {
-		t.Fatalf("Marshal pallValue: %v", err)
-	}
-	if string(b) != pallValueCompact {
-		t.Errorf("Marshal pallValueCompact")
-		diff(t, b, []byte(pallValueCompact))
-		return
-	}
-}
-
-var badUTF8 = []struct {
-	in, out string
-}{
-	{"hello\xffworld", `"hello\ufffdworld"`},
-	{"", `""`},
-	{"\xff", `"\ufffd"`},
-	{"\xff\xff", `"\ufffd\ufffd"`},
-	{"a\xffb", `"a\ufffdb"`},
-	{"\xe6\x97\xa5\xe6\x9c\xac\xff\xaa\x9e", `"日本\ufffd\ufffd\ufffd"`},
-}
-
-func TestMarshalBadUTF8(t *testing.T) {
-	for _, tt := range badUTF8 {
-		b, err := Marshal(tt.in)
-		if string(b) != tt.out || err != nil {
-			t.Errorf("Marshal(%q) = %#q, %v, want %#q, nil", tt.in, b, err, tt.out)
-		}
-	}
-}
-
-func TestMarshalNumberZeroVal(t *testing.T) {
-	var n Number
-	out, err := Marshal(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	outStr := string(out)
-	if outStr != "0" {
-		t.Fatalf("Invalid zero val for Number: %q", outStr)
-	}
-}
-
-func TestMarshalEmbeds(t *testing.T) {
-	top := &Top{
-		Level0: 1,
-		Embed0: Embed0{
-			Level1b: 2,
-			Level1c: 3,
+		{
+			in:  `{"A":"invalid"}`,
+			ptr: new(struct{ A Number }),
+			err: fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", `"invalid"`),
 		},
-		Embed0a: &Embed0a{
-			Level1a: 5,
-			Level1b: 6,
+		{
+			in: `{"A":"invalid"}`,
+			ptr: new(struct {
+				A Number `json:",string"`
+			}),
+			err: fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into json.Number", `invalid`),
 		},
-		Embed0b: &Embed0b{
-			Level1a: 8,
-			Level1b: 9,
-			Level1c: 10,
-			Level1d: 11,
-			Level1e: 12,
+		{
+			in:  `{"A":"invalid"}`,
+			ptr: new(map[string]Number),
+			err: fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", `"invalid"`),
 		},
-		Loop: Loop{
-			Loop1: 13,
-			Loop2: 14,
-		},
-		Embed0p: Embed0p{
-			Point: image.Point{X: 15, Y: 16},
-		},
-		Embed0q: Embed0q{
-			Point: Point{Z: 17},
-		},
-		embed: embed{
-			Q: 18,
-		},
-	}
-	b, err := Marshal(top)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "{\"Level0\":1,\"Level1b\":2,\"Level1c\":3,\"Level1a\":5,\"LEVEL1B\":6,\"e\":{\"Level1a\":8,\"Level1b\":9,\"Level1c\":10,\"Level1d\":11,\"x\":12},\"Loop1\":13,\"Loop2\":14,\"X\":15,\"Y\":16,\"Z\":17,\"Q\":18}"
-	if string(b) != want {
-		t.Errorf("Wrong marshal result.\n got: %q\nwant: %q", b, want)
-	}
+	*/
 }
 
 func equalError(a, b error) bool {
@@ -1090,90 +1012,115 @@ func equalError(a, b error) bool {
 
 func TestUnmarshal(t *testing.T) {
 	for i, tt := range unmarshalTests {
-		var scan scanner
-		in := []byte(tt.in)
-		if err := checkValid(in, &scan); err != nil {
-			if !equalError(err, tt.err) {
-				t.Errorf("#%d: checkValid: %#v", i, err)
-				continue
-			}
-		}
-		if tt.ptr == nil {
-			continue
-		}
+		t.Run(strconv.Quote(string(tt.in)), func(t *testing.T) {
+			//var scan scanner
+			in := []byte(tt.in)
+			/*
+				if err := checkValid(in, &scan); err != nil {
+					if !equalError(err, tt.err) {
+						t.Errorf("#%d: checkValid: %#v", i, err)
+						continue
+					}
+				}
+			*/
+			/*
+				if tt.ptr == nil {
+					return
+				}
+			*/
 
-		typ := reflect.TypeOf(tt.ptr)
-		if typ.Kind() != reflect.Ptr {
-			t.Errorf("#%d: unmarshalTest.ptr %T is not a pointer type", i, tt.ptr)
-			continue
-		}
-		typ = typ.Elem()
+			typ := reflect.TypeOf(tt.ptr)
+			if typ.Kind() != reflect.Ptr {
+				t.Errorf("#%d: unmarshalTest.ptr %T is not a pointer type", i, tt.ptr)
+				return
+			}
+			typ = typ.Elem()
 
-		// v = new(right-type)
-		v := reflect.New(typ)
+			// v = new(right-type)
+			v := reflect.New(typ)
 
-		if !reflect.DeepEqual(tt.ptr, v.Interface()) {
-			// There's no reason for ptr to point to non-zero data,
-			// as we decode into new(right-type), so the data is
-			// discarded.
-			// This can easily mean tests that silently don't test
-			// what they should. To test decoding into existing
-			// data, see TestPrefilled.
-			t.Errorf("#%d: unmarshalTest.ptr %#v is not a pointer to a zero value", i, tt.ptr)
-			continue
-		}
+			if !reflect.DeepEqual(tt.ptr, v.Interface()) {
+				// There's no reason for ptr to point to non-zero data,
+				// as we decode into new(right-type), so the data is
+				// discarded.
+				// This can easily mean tests that silently don't test
+				// what they should. To test decoding into existing
+				// data, see TestPrefilled.
+				t.Errorf("#%d: unmarshalTest.ptr %#v is not a pointer to a zero value", i, tt.ptr)
+				return
+			}
 
-		dec := NewDecoder(bytes.NewReader(in))
-		if tt.useNumber {
-			dec.UseNumber()
-		}
-		if tt.disallowUnknownFields {
-			dec.DisallowUnknownFields()
-		}
-		if err := dec.Decode(v.Interface()); !equalError(err, tt.err) {
-			t.Errorf("#%d: %v, want %v", i, err, tt.err)
-			continue
-		} else if err != nil {
-			continue
-		}
-		if !reflect.DeepEqual(v.Elem().Interface(), tt.out) {
-			t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), tt.out)
-			data, _ := Marshal(v.Elem().Interface())
-			println(string(data))
-			data, _ = Marshal(tt.out)
-			println(string(data))
-			continue
-		}
+			if err := Unmarshal(in, v.Interface()); !equalError(err, tt.err) {
+				t.Errorf("#%d: %v, want %v", i, err, tt.err)
+				return
+			} else if err != nil {
+				fmt.Println(err)
+				return
+			}
 
-		// Check round trip also decodes correctly.
-		if tt.err == nil {
-			enc, err := Marshal(v.Interface())
-			if err != nil {
-				t.Errorf("#%d: error re-marshaling: %v", i, err)
-				continue
+			if !reflect.DeepEqual(v.Elem().Interface(), tt.out) {
+				t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), tt.out)
+				/*
+					data, _ := Marshal(v.Elem().Interface())
+					println(string(data))
+					data, _ = Marshal(tt.out)
+					println(string(data))
+				*/
+				return
 			}
-			if tt.golden && !bytes.Equal(enc, in) {
-				t.Errorf("#%d: remarshal mismatch:\nhave: %s\nwant: %s", i, enc, in)
+
+			/*
+
+				dec := NewDecoder(bytes.NewReader(in))
+				if tt.useNumber {
+					dec.UseNumber()
+				}
+				if tt.disallowUnknownFields {
+					dec.DisallowUnknownFields()
+				}
+				if err := dec.Decode(v.Interface()); !equalError(err, tt.err) {
+					t.Errorf("#%d: %v, want %v", i, err, tt.err)
+					continue
+				} else if err != nil {
+					continue
+				}
+				if !reflect.DeepEqual(v.Elem().Interface(), tt.out) {
+					t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), tt.out)
+					data, _ := Marshal(v.Elem().Interface())
+					println(string(data))
+					data, _ = Marshal(tt.out)
+					println(string(data))
+					continue
+				}
+			*/
+			// Check round trip also decodes correctly.
+			if tt.err == nil {
+				enc, err := Marshal(v.Interface())
+				if err != nil {
+					t.Errorf("#%d: error re-marshaling: %v", i, err)
+					return
+				}
+				if tt.golden && !bytes.Equal(enc, in) {
+					t.Errorf("#%d: remarshal mismatch:\nhave: %s\nwant: %s", i, enc, in)
+				}
+				vv := reflect.New(reflect.TypeOf(tt.ptr).Elem())
+				if err := Unmarshal(enc, vv.Interface()); err != nil {
+					t.Errorf("#%d: error re-unmarshaling %#q: %v", i, enc, err)
+					return
+				}
+				if !reflect.DeepEqual(v.Elem().Interface(), vv.Elem().Interface()) {
+					t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), vv.Elem().Interface())
+					t.Errorf("     In: %q", strings.Map(noSpace, string(in)))
+					t.Errorf("Marshal: %q", strings.Map(noSpace, string(enc)))
+					return
+				}
 			}
-			vv := reflect.New(reflect.TypeOf(tt.ptr).Elem())
-			dec = NewDecoder(bytes.NewReader(enc))
-			if tt.useNumber {
-				dec.UseNumber()
-			}
-			if err := dec.Decode(vv.Interface()); err != nil {
-				t.Errorf("#%d: error re-unmarshaling %#q: %v", i, enc, err)
-				continue
-			}
-			if !reflect.DeepEqual(v.Elem().Interface(), vv.Elem().Interface()) {
-				t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), vv.Elem().Interface())
-				t.Errorf("     In: %q", strings.Map(noSpace, string(in)))
-				t.Errorf("Marshal: %q", strings.Map(noSpace, string(enc)))
-				continue
-			}
-		}
+
+		})
 	}
 }
 
+/*
 func TestUnmarshalMarshal(t *testing.T) {
 	initBig()
 	var v interface{}
@@ -1311,7 +1258,7 @@ func TestErrorMessageFromMisusedString(t *testing.T) {
 		}
 	}
 }
-
+*/
 func noSpace(c rune) rune {
 	if isSpace(byte(c)) { //only used for ascii
 		return -1
@@ -1319,6 +1266,7 @@ func noSpace(c rune) rune {
 	return c
 }
 
+/*
 type All struct {
 	Bool    bool
 	Int     int
@@ -1770,14 +1718,14 @@ type NullTest struct {
 	Slice     []string
 	Interface interface{}
 
-	PRaw    *RawMessage
+	PRaw    *[]byte
 	PTime   *time.Time
 	PBigInt *big.Int
 	PText   *MustNotUnmarshalText
 	PBuffer *bytes.Buffer // has methods, just not relevant ones
 	PStruct *struct{}
 
-	Raw    RawMessage
+	Raw    []byte
 	Time   time.Time
 	BigInt big.Int
 	Text   MustNotUnmarshalText
@@ -2411,3 +2359,4 @@ func TestUnmarshalRecursivePointer(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+*/
