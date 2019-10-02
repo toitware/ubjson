@@ -341,9 +341,7 @@ type structFields struct {
 }
 
 func (se structEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
-	fmt.Println("HERE")
 	e.WriteByte(markerObjectBegin)
-	fmt.Println(se.fields.list)
 FieldLoop:
 	for i := range se.fields.list {
 		f := &se.fields.list[i]
