@@ -424,7 +424,7 @@ func (d *decodeState) object(v reflect.Value) error {
 	// Check for unmarshaler.
 	u, ut, pv := indirect(v, false)
 	if u != nil {
-		start := d.readIndex()
+		start := d.off
 		d.skip()
 		return u.UnmarshalUBJSON(d.data[start:d.off])
 	}
@@ -946,6 +946,8 @@ func (d *decodeState) objectInterface() (map[string]interface{}, error) {
 		}
 
 		m[string(key)] = v
+
+		i++
 	}
 
 	return m, nil
