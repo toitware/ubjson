@@ -422,6 +422,8 @@ func encodeByteSlice(e *encodeState, v reflect.Value, _ encOpts) {
 	e.WriteByte(markerArrayBegin)
 	e.WriteByte(markerType)
 	e.WriteByte(markerUint8Literal)
+	e.WriteByte(markerCount)
+	writeInt(e, int64(len(s)))
 	e.Write(s)
 	e.WriteByte(markerArrayEnd)
 }
