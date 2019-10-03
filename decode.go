@@ -22,12 +22,6 @@ func Unmarshal(data []byte, v interface{}) error {
 	// before discovering a JSON syntax error.
 
 	var d decodeState
-	/*
-		err := checkValid(data, &d.scan)
-		if err != nil {
-			return err
-		}
-	*/
 
 	d.init(data)
 	return d.unmarshal(v)
@@ -79,11 +73,36 @@ func (e *InvalidUnmarshalError) Error() string {
 	return "ubjson: Unmarshal(nil " + e.Type.String() + ")"
 }
 
+// A SyntaxError is a description of a UBJSON syntax error.
+type SyntaxError struct {
+	msg    string // description of error
+	Offset int64  // error occurred after reading Offset bytes
+}
+
+func (e *SyntaxError) Error() string { return e.msg }
+
+const (
+	markerNullLiteral   = 'Z'
+	markerTrueLiteral   = 'T'
+	markerFalseLiteral  = 'F'
+	markerInt8Literal   = 'i'
+	markerUint8Literal  = 'U'
+	markerInt16Literal  = 'I'
+	markerInt32Literal  = 'l'
+	markerInt64Literal  = 'L'
+	markerStringLiteral = 'S'
+	markerObjectBegin   = '{'
+	markerObjectEnd     = '}'
+	markerArrayBegin    = '['
+	markerArrayEnd      = ']'
+	markerType          = '$'
+	markerCount         = '#'
+)
+
 // decodeState represents the state while decoding a UBJSON value.
 type decodeState struct {
 	data         []byte
-	off          int // next read offset in data
-	scan         scanner
+	off          int      // next read offset in data
 	errorContext struct { // provides context for type errors
 		Struct     reflect.Type
 		FieldStack []string
@@ -103,8 +122,6 @@ func (d *decodeState) unmarshal(v interface{}) error {
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
 		return &InvalidUnmarshalError{reflect.TypeOf(v)}
 	}
-
-	d.scan.reset()
 
 	// We decode rv not rv.Elem because the Unmarshaler interface
 	// test must be applied at the top level of the value.
@@ -155,11 +172,8 @@ func (d *decodeState) addErrorContext(err error) error {
 // reads the following byte ahead. If v is invalid, the value is discarded.
 // The first byte of the value has been read already.
 func (d *decodeState) value(marker byte, v reflect.Value) error {
-	switch d.scan.readOpcode(marker) {
+	switch marker {
 	default:
-		return d.syntaxError(marker, "looking for beginning of value")
-
-	case scanBeginLiteral:
 		start := d.off
 
 		if err := d.skipLiteral(marker); err != nil {
@@ -172,7 +186,7 @@ func (d *decodeState) value(marker byte, v reflect.Value) error {
 			}
 		}
 
-	case scanBeginObject:
+	case markerObjectBegin:
 		if v.IsValid() {
 			if err := d.object(v); err != nil {
 				return err
@@ -181,7 +195,7 @@ func (d *decodeState) value(marker byte, v reflect.Value) error {
 			d.skip()
 		}
 
-	case scanBeginArray:
+	case markerArrayBegin:
 		if v.IsValid() {
 			if err := d.array(v); err != nil {
 				return err
@@ -213,7 +227,8 @@ func (d *decodeState) skip() {
 func (d *decodeState) skipLiteral(marker byte) error {
 	switch marker {
 	default:
-		panic(phasePanicMsg)
+		return d.syntaxError(marker, "looking for beginning of value")
+
 	case markerNullLiteral:
 	case markerTrueLiteral:
 	case markerFalseLiteral:
@@ -235,7 +250,7 @@ func (d *decodeState) skipLiteral(marker byte) error {
 		d.off += length
 	}
 
-	return nil
+	return d.eof()
 }
 
 func (d *decodeState) readLength() (int, error) {
@@ -309,9 +324,9 @@ func (d *decodeState) array(v reflect.Value) error {
 	case reflect.Interface:
 		if v.NumMethod() == 0 {
 			// Decoding into nil interface? Switch to non-reflect code.
-			ai := d.arrayInterface()
+			ai, err := d.arrayInterface()
 			v.Set(reflect.ValueOf(ai))
-			return nil
+			return err
 		}
 		// Otherwise it's invalid.
 		fallthrough
@@ -323,22 +338,26 @@ func (d *decodeState) array(v reflect.Value) error {
 		break
 	}
 
-	fmt.Println(d.data[d.off:])
-
 	var typeMarker byte
 	if d.isMarker(markerType) {
 		typeMarker = d.scanNext()
 	}
 
-	fmt.Println(d.data[d.off:])
-
-	fmt.Println(typeMarker)
+	count := -1
+	if d.isMarker(markerCount) {
+		var err error
+		if count, err = d.readLength(); err != nil {
+			return err
+		}
+	}
 
 	i := 0
 	for {
-		// Look ahead for ] - can only happen on first iteration.
-		if d.isMarker(markerArrayEnd) {
-			d.off++
+		if count >= 0 {
+			if i == count {
+				break
+			}
+		} else if d.isMarker(markerArrayEnd) {
 			break
 		}
 
@@ -349,6 +368,9 @@ func (d *decodeState) array(v reflect.Value) error {
 				newcap := v.Cap() + v.Cap()/2
 				if newcap < 4 {
 					newcap = 4
+				}
+				if count >= 0 {
+					newcap = count
 				}
 				newv := reflect.MakeSlice(v.Type(), v.Len(), newcap)
 				reflect.Copy(newv, v)
@@ -361,13 +383,11 @@ func (d *decodeState) array(v reflect.Value) error {
 
 		eType := typeMarker
 		if eType == 0 {
-			fmt.Println("hmm")
 			eType = d.scanNext()
 		}
 
 		if i < v.Len() {
 			// Decode into element.
-			fmt.Println(eType)
 			if err := d.value(eType, v.Index(i)); err != nil {
 				return err
 			}
@@ -377,8 +397,8 @@ func (d *decodeState) array(v reflect.Value) error {
 				return err
 			}
 		}
-		i++
 
+		i++
 	}
 
 	if i < v.Len() {
@@ -418,9 +438,9 @@ func (d *decodeState) object(v reflect.Value) error {
 
 	// Decoding into nil interface? Switch to non-reflect code.
 	if v.Kind() == reflect.Interface && v.NumMethod() == 0 {
-		oi := d.objectInterface()
+		oi, err := d.objectInterface()
 		v.Set(reflect.ValueOf(oi))
-		return nil
+		return err
 	}
 
 	var fields structFields
@@ -459,13 +479,26 @@ func (d *decodeState) object(v reflect.Value) error {
 	var mapElem reflect.Value
 	origErrorContext := d.errorContext
 
-	for {
-		if err := d.eof(); err != nil {
+	var typeMarker byte
+	if d.isMarker(markerType) {
+		typeMarker = d.scanNext()
+	}
+
+	count := -1
+	if d.isMarker(markerCount) {
+		var err error
+		if count, err = d.readLength(); err != nil {
 			return err
 		}
-		// Read opening " of string key or closing }.
-		if d.data[d.off] == markerObjectEnd {
-			d.off++
+	}
+
+	i := 0
+	for {
+		if count >= 0 {
+			if i == count {
+				break
+			}
+		} else if d.isMarker(markerObjectEnd) {
 			break
 		}
 
@@ -534,7 +567,12 @@ func (d *decodeState) object(v reflect.Value) error {
 			}
 		}
 
-		if err := d.value(d.scanNext(), subv); err != nil {
+		eType := typeMarker
+		if eType == 0 {
+			eType = d.scanNext()
+		}
+
+		if err := d.value(eType, subv); err != nil {
 			return err
 		}
 
@@ -587,6 +625,8 @@ func (d *decodeState) object(v reflect.Value) error {
 		// space and avoid unnecessary allocs.
 		d.errorContext.FieldStack = d.errorContext.FieldStack[:len(origErrorContext.FieldStack)]
 		d.errorContext.Struct = origErrorContext.Struct
+
+		i++
 	}
 
 	return nil
@@ -799,104 +839,151 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 // but they avoid the weight of reflection in this common case.
 
 // valueInterface is like value but returns interface{}
-func (d *decodeState) valueInterface() (val interface{}) {
-	switch d.scan.readOpcode(d.scanNext()) {
+func (d *decodeState) valueInterface(marker byte) (interface{}, error) {
+	switch marker {
+	case markerArrayBegin:
+		val, err := d.arrayInterface()
+		d.scanNext()
+		return val, err
+	case markerObjectBegin:
+		val, err := d.objectInterface()
+		d.scanNext()
+		return val, err
 	default:
-		panic(phasePanicMsg)
-	case scanBeginArray:
-		val = d.arrayInterface()
-		d.scanNext()
-	case scanBeginObject:
-		val = d.objectInterface()
-		d.scanNext()
-	case scanBeginLiteral:
-		val = d.literalInterface()
+		return d.literalInterface(marker)
 	}
-	return
 }
 
 // arrayInterface is like array but returns []interface{}.
-func (d *decodeState) arrayInterface() []interface{} {
-	panic("unimplemented")
-	/*
-		var v = make([]interface{}, 0)
-		for {
-			// Look ahead for ] - can only happen on first iteration.
-			if d.opcode == scanEndArray {
-				break
-			}
+func (d *decodeState) arrayInterface() ([]interface{}, error) {
+	var typeMarker byte
+	if d.isMarker(markerType) {
+		typeMarker = d.scanNext()
+	}
 
-			v = append(v, d.valueInterface())
-
-			// Next token must be , or ].
-			if d.opcode == scanEndArray {
-				break
-			}
-			if d.opcode != scanArrayValue {
-				panic(phasePanicMsg)
-			}
+	count := -1
+	var v []interface{}
+	if d.isMarker(markerCount) {
+		var err error
+		if count, err = d.readLength(); err != nil {
+			return nil, err
 		}
-		return v
-	*/
+		v = make([]interface{}, 0, count)
+	} else {
+		v = make([]interface{}, 0)
+	}
+
+	i := 0
+	for {
+		if count >= 0 {
+			if i == count {
+				break
+			}
+		} else if d.isMarker(markerArrayEnd) {
+			break
+		}
+
+		eType := typeMarker
+		if eType == 0 {
+			eType = d.scanNext()
+		}
+
+		e, err := d.valueInterface(eType)
+		if err != nil {
+			return nil, err
+		}
+
+		v = append(v, e)
+		i++
+	}
+
+	return v, nil
 }
 
 // objectInterface is like object but returns map[string]interface{}.
-func (d *decodeState) objectInterface() map[string]interface{} {
-	m := make(map[string]interface{})
-	for {
-		if err := d.eof(); err != nil {
-			panic(err)
-		}
+func (d *decodeState) objectInterface() (map[string]interface{}, error) {
+	var typeMarker byte
+	if d.isMarker(markerType) {
+		typeMarker = d.scanNext()
+	}
 
-		// Read opening " of string key or closing }.
-		if d.data[d.off] == scanEndObject {
-			// closing } - can only happen on first iteration.
-			d.off++
+	count := -1
+	if d.isMarker(markerCount) {
+		var err error
+		if count, err = d.readLength(); err != nil {
+			return nil, err
+		}
+	}
+
+	m := make(map[string]interface{})
+	i := 0
+	for {
+		if count >= 0 {
+			if i == count {
+				break
+			}
+		} else if d.isMarker(markerObjectEnd) {
 			break
 		}
 
 		// Read string key.
 		start := d.off
 		if err := d.skipLiteral(markerStringLiteral); err != nil {
-			panic(err)
+			return nil, err
 		}
 		item := d.data[start:d.off]
 		key := extractString(item)
 
+		eType := typeMarker
+		if eType == 0 {
+			eType = d.scanNext()
+		}
+
 		// Read value.
-		m[string(key)] = d.valueInterface()
+		v, err := d.valueInterface(eType)
+		if err != nil {
+			return nil, err
+		}
+
+		m[string(key)] = v
 	}
-	return m
+
+	return m, nil
 }
 
 // literalInterface consumes and returns a literal from d.data[d.off-1:] and
 // it reads the following byte ahead. The first byte of the literal has been
 // read already (that's how the caller knows it's a literal).
-func (d *decodeState) literalInterface() interface{} {
-	panic("unimplemented")
+func (d *decodeState) literalInterface(marker byte) (interface{}, error) {
 	// All bytes inside literal return scanContinue op code.
-	start := d.readIndex()
-	if err := d.skipLiteral(d.scanNext()); err != nil {
-		d.saveError(err)
-		return nil
+	start := d.off
+	if err := d.skipLiteral(marker); err != nil {
+		return nil, err
 	}
 
-	item := d.data[start:d.readIndex()]
+	item := d.data[start:d.off]
 
-	switch c := item[0]; c {
+	switch marker {
 	case markerNullLiteral: // null
-		return nil
+		return nil, nil
 
 	case markerTrueLiteral, markerFalseLiteral: // true, false
-		return c == markerTrueLiteral
+		return marker == markerTrueLiteral, nil
 
-	case '"': // string
+	case markerStringLiteral: // string
 		s := extractString(item)
-		return string(s)
+		return string(s), nil
 
-	default: // number
-		n, _ := extractNumber(0, item)
-		return n
+	case markerInt8Literal,
+		markerUint8Literal,
+		markerInt16Literal,
+		markerInt32Literal,
+		markerInt64Literal: // number
+		n, _ := extractNumber(marker, item)
+		return n, nil
+
+	default:
+		return nil, d.syntaxError(marker, "looking for beginning of value")
 	}
 }
 
@@ -920,4 +1007,19 @@ func extractNumber(marker byte, item []byte) (int64, int) {
 func extractString(item []byte) []byte {
 	_, bytes := extractNumber(item[0], item[1:])
 	return item[1+bytes:]
+}
+
+// quoteChar formats c as a quoted character literal
+func quoteChar(c byte) string {
+	// special cases - different from quoted strings
+	if c == '\'' {
+		return `'\''`
+	}
+	if c == '"' {
+		return `'"'`
+	}
+
+	// use quoted string with different quotation marks
+	s := strconv.Quote(string(c))
+	return "'" + s[1:len(s)-1] + "'"
 }

@@ -12,7 +12,6 @@ import (
 	"image"
 	"reflect"
 	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -431,13 +430,16 @@ var unmarshalTests = []unmarshalTest{
 		{in: `"invalid: \uD834x\uDD1E"`, ptr: new(string), out: "invalid: \uFFFDx\uFFFD"},
 	*/
 	{in: []byte{'Z'}, ptr: new(interface{}), out: nil},
+	{in: []byte{'[', ']'}, ptr: new(interface{}), out: []interface{}{}},
 	{in: []byte{'[', '$', 'U', 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
+	{in: []byte{'[', '$', 'U', '#', 'U', 1, 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
 
 	/*
 		{in: `{"X": [1,2,3], "Y": 4}`, ptr: new(T), out: T{Y: 4}, err: &UnmarshalTypeError{"array", reflect.TypeOf(""), 7, "T", "X"}},
 		{in: `{"X": 23}`, ptr: new(T), out: T{}, err: &UnmarshalTypeError{"number", reflect.TypeOf(""), 8, "T", "X"}}, {in: `{"x": 1}`, ptr: new(tx), out: tx{}},
 	*/
 	{in: []byte{'{', '}'}, ptr: new(tx), out: tx{}},
+	{in: []byte{'{', '#', 'U', 0}, ptr: new(tx), out: tx{}},
 	{in: []byte{'{', 'U', 1, 'x', 'U', 1, '}'}, ptr: new(tx), out: tx{}},
 	/*
 		{in: `{"x": 1}`, ptr: new(tx), err: fmt.Errorf("json: unknown field \"x\""), disallowUnknownFields: true},
@@ -457,6 +459,7 @@ var unmarshalTests = []unmarshalTest{
 		// Z has a "-" tag.
 	*/
 	{in: []byte{'{', 'U', 1, 'Y', 'U', 1, 'U', 1, 'Z', 'U', 2, '}'}, ptr: new(T), out: T{Y: 1}},
+	{in: []byte{'{', '#', 'U', 2, 'U', 1, 'Y', 'U', 1, 'U', 1, 'Z', 'U', 2}, ptr: new(T), out: T{Y: 1}},
 	/*
 		{in: `{"Y": 1, "Z": 2}`, ptr: new(T), err: fmt.Errorf("json: unknown field \"Z\""), disallowUnknownFields: true},
 
@@ -1016,8 +1019,14 @@ func equalError(a, b error) bool {
 func TestUnmarshal(t *testing.T) {
 	for i, tt := range unmarshalTests {
 		t.Run(strconv.Quote(string(tt.in)), func(t *testing.T) {
-			//var scan scanner
-			in := []byte(tt.in)
+			in := tt.in
+
+			// Validate no sub-array panics.
+			for i := 1; i < len(in)-1; i++ {
+				var v interface{}
+				Unmarshal(in[:i], &v)
+			}
+
 			/*
 				if err := checkValid(in, &scan); err != nil {
 					if !equalError(err, tt.err) {
@@ -1113,8 +1122,8 @@ func TestUnmarshal(t *testing.T) {
 				}
 				if !reflect.DeepEqual(v.Elem().Interface(), vv.Elem().Interface()) {
 					t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), vv.Elem().Interface())
-					t.Errorf("     In: %q", strings.Map(noSpace, string(in)))
-					t.Errorf("Marshal: %q", strings.Map(noSpace, string(enc)))
+					t.Errorf("     In: %q", string(in))
+					t.Errorf("Marshal: %q", string(enc))
 					return
 				}
 			}
@@ -1261,15 +1270,7 @@ func TestErrorMessageFromMisusedString(t *testing.T) {
 		}
 	}
 }
-*/
-func noSpace(c rune) rune {
-	if isSpace(byte(c)) { //only used for ascii
-		return -1
-	}
-	return c
-}
 
-/*
 type All struct {
 	Bool    bool
 	Int     int

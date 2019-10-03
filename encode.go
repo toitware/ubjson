@@ -228,7 +228,7 @@ func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
 }
 
 func invalidValueEncoder(e *encodeState, v reflect.Value, _ encOpts) {
-	e.WriteString("null")
+	e.WriteByte(markerNullLiteral)
 }
 
 func boolEncoder(e *encodeState, v reflect.Value, opts encOpts) {
