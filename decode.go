@@ -842,13 +842,9 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 func (d *decodeState) valueInterface(marker byte) (interface{}, error) {
 	switch marker {
 	case markerArrayBegin:
-		val, err := d.arrayInterface()
-		d.scanNext()
-		return val, err
+		return d.arrayInterface()
 	case markerObjectBegin:
-		val, err := d.objectInterface()
-		d.scanNext()
-		return val, err
+		return d.objectInterface()
 	default:
 		return d.literalInterface(marker)
 	}

@@ -433,6 +433,7 @@ var unmarshalTests = []unmarshalTest{
 	{in: []byte{'[', ']'}, ptr: new(interface{}), out: []interface{}{}},
 	{in: []byte{'[', '$', 'U', 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
 	{in: []byte{'[', '$', 'U', '#', 'U', 1, 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
+	{in: []byte{'[', '[', ']', '[', ']', ']'}, ptr: new(interface{}), out: []interface{}{[]interface{}{}, []interface{}{}}},
 
 	/*
 		{in: `{"X": [1,2,3], "Y": 4}`, ptr: new(T), out: T{Y: 4}, err: &UnmarshalTypeError{"array", reflect.TypeOf(""), 7, "T", "X"}},
@@ -443,6 +444,11 @@ var unmarshalTests = []unmarshalTest{
 	{in: []byte{'{', '#', 'U', 0}, ptr: new(interface{}), out: map[string]interface{}{}},
 	{in: []byte{'{', 'U', 1, 'x', 'U', 1, '}'}, ptr: new(tx), out: tx{}},
 	{in: []byte{'{', '#', 'U', 1, 'U', 1, 'x', 'U', 1}, ptr: new(interface{}), out: map[string]interface{}{"x": int64(1)}},
+	{in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '{', '}', '}'}, ptr: new(interface{}), out: map[string]interface{}{"x": map[string]interface{}{}, "y": map[string]interface{}{}}},
+
+	// TODO: Implement skip.
+	// {in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '{', '}', '}'}, ptr: new(tx), out: tx{}},
+
 	/*
 		{in: `{"x": 1}`, ptr: new(tx), err: fmt.Errorf("json: unknown field \"x\""), disallowUnknownFields: true},
 		{in: `{"S": 23}`, ptr: new(W), out: W{}, err: &UnmarshalTypeError{"number", reflect.TypeOf(SS("")), 0, "W", "S"}},

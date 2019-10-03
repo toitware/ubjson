@@ -392,10 +392,7 @@ func (me mapEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	}
 	sort.Slice(sv, func(i, j int) bool { return sv[i].s < sv[j].s })
 
-	for i, kv := range sv {
-		if i > 0 {
-			e.WriteByte(',')
-		}
+	for _, kv := range sv {
 		writeString(e, kv.s)
 		me.elemEnc(e, v.MapIndex(kv.v), opts)
 	}
