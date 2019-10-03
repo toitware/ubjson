@@ -13,6 +13,7 @@ import (
 	"github.com/antonholmquist/jason"
 	"github.com/bitly/go-simplejson"
 	"github.com/buger/jsonparser"
+	cesanta_ubjson "github.com/cesanta/ubjson"
 	jmank_ubjson "github.com/jmank88/ubjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	"github.com/mreiferson/go-ujson"
@@ -343,6 +344,24 @@ func BenchmarkToitwareUbjsonSmallMarshal(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		data, _ := ubjson.Marshal(st)
+
+		nothing(data)
+	}
+}
+func BenchmarkCesantaUbjsonSmall(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var data SmallPayload
+		cesanta_ubjson.Unmarshal(smallFixtureUBJSON, &data)
+
+		nothing(data.Uuid, data.Tz, data.Ua, data.St)
+	}
+}
+func BenchmarkCesantaUbjsonSmallMarshal(b *testing.B) {
+	var st SmallPayload
+	cesanta_ubjson.Unmarshal(smallFixtureUBJSON, &st)
+
+	for i := 0; i < b.N; i++ {
+		data, _ := cesanta_ubjson.Marshal(st)
 
 		nothing(data)
 	}

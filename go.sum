@@ -10,6 +10,10 @@ github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 h1:DDGfHa7BWjL4Yn
 github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869/go.mod h1:Ekp36dRnpXw/yCqJaO+ZrUyxD+3VXMFFr56k5XYrpB4=
 github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23 h1:D21IyuvjDCshj1/qq+pCNd3VZOAEI9jy6Bi131YlXgI=
 github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23/go.mod h1:bbYlZJ7hK1yFx9hf58LP0zeX7UjIGs20ufpu3evjr+s=
+github.com/cesanta/ubjson v0.0.0-20160505143622-3758bbe9c1d8 h1:kqkpVeme+/mPjEpF8IKTbPiT2T815aTKZzlBmII1/j8=
+github.com/cesanta/ubjson v0.0.0-20160505143622-3758bbe9c1d8/go.mod h1:U5WrvamRW1wH8H2eZ55ErWRskrF+86e4Bnyt0OLwQtI=
+github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b h1:VKtxabqXZkF25pY9ekfRL6a582T4P37/31XEstQ5p58=
+github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/jmank88/ubjson v1.3.0 h1:WxT8eyLz+Gtwb3d5O4SdlDzF+AJPgUj9yIKUaQpN0ko=
 github.com/jmank88/ubjson v1.3.0/go.mod h1:L8nSkXdOERfFb0xYwsA8prOCvLvH0lLqk4x70M19KCQ=
 github.com/kr/pretty v0.1.0 h1:L/CwN0zerZDmRFUapSPitk6f+Q3+0za1rQkzVuMiMFI=
