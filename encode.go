@@ -425,7 +425,6 @@ func encodeByteSlice(e *encodeState, v reflect.Value, _ encOpts) {
 	e.WriteByte(markerCount)
 	writeInt(e, int64(len(s)))
 	e.Write(s)
-	e.WriteByte(markerArrayEnd)
 }
 
 // sliceEncoder just wraps an arrayEncoder, checking to make sure the value isn't nil.

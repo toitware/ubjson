@@ -396,6 +396,10 @@ type B struct {
 	B bool `json:",string"`
 }
 
+type D struct {
+	D []byte
+}
+
 type DoublePtr struct {
 	I **int
 	J **int
@@ -432,7 +436,8 @@ var unmarshalTests = []unmarshalTest{
 	{in: []byte{'Z'}, ptr: new(interface{}), out: nil},
 	{in: []byte{'[', ']'}, ptr: new(interface{}), out: []interface{}{}},
 	{in: []byte{'[', '$', 'U', 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
-	{in: []byte{'[', '$', 'U', '#', 'U', 1, 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
+	{in: []byte{'[', '$', 'U', '#', 'U', 1, 'b'}, ptr: new([]byte), out: []byte{'b'}},
+	{in: []byte{'[', '$', 'U', '#', 'U', 1, 'b'}, ptr: new([]interface{}), out: []interface{}{int64('b')}},
 	{in: []byte{'[', '[', ']', '[', ']', ']'}, ptr: new(interface{}), out: []interface{}{[]interface{}{}, []interface{}{}}},
 
 	/*
@@ -445,6 +450,8 @@ var unmarshalTests = []unmarshalTest{
 	{in: []byte{'{', 'U', 1, 'x', 'U', 1, '}'}, ptr: new(tx), out: tx{}},
 	{in: []byte{'{', '#', 'U', 1, 'U', 1, 'x', 'U', 1}, ptr: new(interface{}), out: map[string]interface{}{"x": int64(1)}},
 	{in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '{', '}', '}'}, ptr: new(interface{}), out: map[string]interface{}{"x": map[string]interface{}{}, "y": map[string]interface{}{}}},
+
+	{in: []byte{'{', 'U', 1, 'd', '[', '$', 'U', '#', 'U', 1, 'b', '}'}, ptr: new(D), out: D{D: []uint8{'b'}}},
 
 	// TODO: Implement skip.
 	// {in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '{', '}', '}'}, ptr: new(tx), out: tx{}},
