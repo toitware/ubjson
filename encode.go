@@ -53,7 +53,7 @@ func (e *UnsupportedValueError) Error() string {
 	return "ubjson: unsupported value: " + e.Str
 }
 
-// A MarshalerError represents an error from calling a MarshalJSON or MarshalText method.
+// A MarshalerError represents an error from calling a MarshalUBJSON or MarshalText method.
 type MarshalerError struct {
 	Type reflect.Type
 	Err  error
@@ -65,7 +65,7 @@ func (e *MarshalerError) Error() string {
 
 func (e *MarshalerError) Unwrap() error { return e.Err }
 
-// An encodeState encodes JSON into a bytes.Buffer.
+// An encodeState encodes UBJSON into a bytes.Buffer.
 type encodeState struct {
 	bytes.Buffer // accumulated output
 	scratch      [9]byte
@@ -101,7 +101,7 @@ func (e *encodeState) marshal(v interface{}, opts encOpts) (err error) {
 	return nil
 }
 
-// error aborts the encoding by panicking with err wrapped in jsonError.
+// error aborts the encoding by panicking with err wrapped in ubjsonError.
 func (e *encodeState) error(err error) {
 	panic(ubjsonError{err})
 }
@@ -304,7 +304,7 @@ func stringEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 				numStr = "0" // Number's zero-val
 			}
 			if !isValidNumber(numStr) {
-				e.error(fmt.Errorf("json: invalid number literal %q", numStr))
+				e.error(fmt.Errorf("ubjson: invalid number literal %q", numStr))
 			}
 			if opts.quoted {
 				e.WriteByte('"')
@@ -580,7 +580,7 @@ func (x byIndex) Less(i, j int) bool {
 	return len(x[i].index) < len(x[j].index)
 }
 
-// typeFields returns a list of fields that JSON should recognize for the given type.
+// typeFields returns a list of fields that UBJSON should recognize for the given type.
 // The algorithm is breadth-first search over the set of structs to include - the top struct
 // and then any reachable anonymous structs.
 func typeFields(t reflect.Type) structFields {
@@ -683,7 +683,7 @@ func typeFields(t reflect.Type) structFields {
 	sort.Slice(fields, func(i, j int) bool {
 		x := fields
 		// sort field by name, breaking ties with depth, then
-		// breaking ties with "name came from json tag", then
+		// breaking ties with "name came from ubjson tag", then
 		// breaking ties with index sequence.
 		if x[i].name != x[j].name {
 			return x[i].name < x[j].name
@@ -698,7 +698,7 @@ func typeFields(t reflect.Type) structFields {
 	})
 
 	// Delete all fields that are hidden by the Go rules for embedded fields,
-	// except that fields with JSON tags are promoted.
+	// except that fields with UBJSON tags are promoted.
 
 	// The fields are sorted in primary order of name, secondary order
 	// of field index length. Loop over names; for each name, delete
@@ -743,7 +743,7 @@ func typeFields(t reflect.Type) structFields {
 // dominantField looks through the fields, all of which are known to
 // have the same name, to find the single field that dominates the
 // others using Go's embedding rules, modified by the presence of
-// JSON tags. If there are multiple top-level fields, the boolean
+// UBJSON tags. If there are multiple top-level fields, the boolean
 // will be false: This condition is an error in Go and we skip all
 // the fields.
 func dominantField(fields []field) (field, bool) {

@@ -10,7 +10,7 @@ import (
 )
 
 // phasePanicMsg is used as a panic message when we end up with something that
-// shouldn't happen. It can indicate a bug in the JSON decoder, or that
+// shouldn't happen. It can indicate a bug in the UBJSON decoder, or that
 // something is editing the data slice while the decoder executes.
 const phasePanicMsg = "UBJSON decoder out of sync - data changing underfoot?"
 
@@ -19,7 +19,7 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 func Unmarshal(data []byte, v interface{}) error {
 	// Check for well-formedness.
 	// Avoids filling out half a data structure
-	// before discovering a JSON syntax error.
+	// before discovering a UBJSON syntax error.
 
 	var d decodeState
 
@@ -133,7 +133,7 @@ func (d *decodeState) unmarshal(v interface{}) error {
 }
 
 // TODO: Remove!
-// A Number represents a JSON number literal.
+// A Number represents a UBJSON number literal.
 type Number string
 
 func (d *decodeState) init(data []byte) *decodeState {
@@ -550,7 +550,7 @@ func (d *decodeState) object(v reflect.Value) error {
 							if !subv.CanSet() {
 								d.saveError(fmt.Errorf("ubjson: cannot set embedded pointer to unexported struct: %v", subv.Type().Elem()))
 								// Invalidate subv to ensure d.value(subv) skips over
-								// the JSON value without assigning it to subv.
+								// the UBJSON value without assigning it to subv.
 								subv = reflect.Value{}
 								break
 							}
@@ -610,7 +610,7 @@ func (d *decodeState) object(v reflect.Value) error {
 					}
 					kv = reflect.ValueOf(n).Convert(kt)
 				default:
-					panic("json: Unexpected key type") // should never occur
+					panic("ubjson: Unexpected key type") // should never occur
 				}
 			}
 			if kv.IsValid() {
@@ -738,7 +738,7 @@ func (d *decodeState) literalStore(marker byte, item []byte, v reflect.Value) er
 		case reflect.String:
 			/*
 				if v.Type() == numberType && !isValidNumber(string(s)) {
-					return fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", item)
+					return fmt.Errorf("ubjson: invalid number literal, trying to unmarshal %q into Number", item)
 				}
 			*/
 			v.SetString(string(s))
