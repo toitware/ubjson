@@ -202,12 +202,10 @@ func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
 		return intEncoder
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		return uintEncoder
-		/*
-			case reflect.Float32:
-				return float32Encoder
-			case reflect.Float64:
-				return float64Encoder
-		*/
+	case reflect.Float32:
+		return float32Encoder
+	case reflect.Float64:
+		return float64Encoder
 	case reflect.String:
 		return stringEncoder
 	case reflect.Interface:
@@ -287,6 +285,26 @@ func uintEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 		e.error(fmt.Errorf("integer overflow writing %v", u))
 	}
 	writeInt(e, int64(u))
+}
+
+func float32Encoder(e *encodeState, v reflect.Value, opts encOpts) {
+	f := v.Float()
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		e.error(&UnsupportedValueError{v, strconv.FormatFloat(f, 'g', -1, 32)})
+	}
+	e.scratch[0] = markerFloat32Literal
+	binary.BigEndian.PutUint32(e.scratch[1:], math.Float32bits(float32(f)))
+	e.Write(e.scratch[:5])
+}
+
+func float64Encoder(e *encodeState, v reflect.Value, opts encOpts) {
+	f := v.Float()
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		e.error(&UnsupportedValueError{v, strconv.FormatFloat(f, 'g', -1, 64)})
+	}
+	e.scratch[0] = markerFloat64Literal
+	binary.BigEndian.PutUint64(e.scratch[1:], math.Float64bits(f))
+	e.Write(e.scratch[:9])
 }
 
 func writeString(e *encodeState, s string) {

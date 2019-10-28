@@ -419,8 +419,11 @@ var unmarshalTests = []unmarshalTest{
 	{in: []byte{'I', 255, 255}, ptr: new(int), out: -1},
 	{in: []byte{'l', 255, 255, 255, 255}, ptr: new(int), out: -1},
 	{in: []byte{'L', 255, 255, 255, 255, 255, 255, 255, 255}, ptr: new(int), out: -1},
+	{in: []byte{'D', 0, 0, 0, 0, 0, 0, 0, 0}, ptr: new(float64), out: 0.0},
+	{in: []byte{'D', 0, 0, 0, 1, 0, 0, 0, 2}, ptr: new(float64), out: 2.121995792e-314},
+	{in: []byte{'d', 0, 1, 0, 2}, ptr: new(float32), out: float32(9.1838e-41)},
 	/*
-		{in: `1.2`, ptr: new(float64), out: 1.2},
+
 		{in: `-5`, ptr: new(int16), out: int16(-5)},
 		{in: `2`, ptr: new(Number), out: Number("2"), useNumber: true},
 		{in: `2`, ptr: new(Number), out: Number("2")},

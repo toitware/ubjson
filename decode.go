@@ -4,6 +4,7 @@ import (
 	"encoding"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -82,21 +83,23 @@ type SyntaxError struct {
 func (e *SyntaxError) Error() string { return e.msg }
 
 const (
-	markerNullLiteral   = 'Z'
-	markerTrueLiteral   = 'T'
-	markerFalseLiteral  = 'F'
-	markerInt8Literal   = 'i'
-	markerUint8Literal  = 'U'
-	markerInt16Literal  = 'I'
-	markerInt32Literal  = 'l'
-	markerInt64Literal  = 'L'
-	markerStringLiteral = 'S'
-	markerObjectBegin   = '{'
-	markerObjectEnd     = '}'
-	markerArrayBegin    = '['
-	markerArrayEnd      = ']'
-	markerType          = '$'
-	markerCount         = '#'
+	markerNullLiteral    = 'Z'
+	markerTrueLiteral    = 'T'
+	markerFalseLiteral   = 'F'
+	markerInt8Literal    = 'i'
+	markerUint8Literal   = 'U'
+	markerInt16Literal   = 'I'
+	markerInt32Literal   = 'l'
+	markerInt64Literal   = 'L'
+	markerStringLiteral  = 'S'
+	markerFloat32Literal = 'd'
+	markerFloat64Literal = 'D'
+	markerObjectBegin    = '{'
+	markerObjectEnd      = '}'
+	markerArrayBegin     = '['
+	markerArrayEnd       = ']'
+	markerType           = '$'
+	markerCount          = '#'
 )
 
 // decodeState represents the state while decoding a UBJSON value.
@@ -240,6 +243,10 @@ func (d *decodeState) skipLiteral(marker byte) error {
 	case markerInt32Literal:
 		d.off += 4
 	case markerInt64Literal:
+		d.off += 8
+	case markerFloat32Literal:
+		d.off += 4
+	case markerFloat64Literal:
 		d.off += 8
 	case markerStringLiteral:
 		length, err := d.readLength()
@@ -722,6 +729,19 @@ func (d *decodeState) literalStore(marker byte, item []byte, v reflect.Value) er
 			*/
 		}
 
+	case markerFloat64Literal, markerFloat32Literal:
+		f := extractFloat(marker, item)
+		switch v.Kind() {
+		default:
+			d.saveError(&UnmarshalTypeError{Value: "float " + strconv.FormatFloat(f, 'E', -1, 64), Type: v.Type(), Offset: int64(d.readIndex())})
+			break
+		case reflect.Float64, reflect.Float32:
+			if v.OverflowFloat(f) {
+				d.saveError(&UnmarshalTypeError{Value: "float " + strconv.FormatFloat(f, 'E', -1, 64), Type: v.Type(), Offset: int64(d.readIndex())})
+				break
+			}
+			v.SetFloat(f)
+		}
 	case markerStringLiteral:
 		s := extractString(item)
 
@@ -997,6 +1017,17 @@ func extractNumber(marker byte, item []byte) (int64, int) {
 		return int64(int32(binary.BigEndian.Uint32(item))), 4
 	case markerInt64Literal:
 		return int64(binary.BigEndian.Uint64(item)), 8
+	}
+
+	panic(phasePanicMsg)
+}
+
+func extractFloat(marker byte, item []byte) float64 {
+	switch marker {
+	case markerFloat64Literal:
+		return math.Float64frombits(binary.BigEndian.Uint64(item))
+	case markerFloat32Literal:
+		return float64(math.Float32frombits(binary.BigEndian.Uint32(item)))
 	}
 
 	panic(phasePanicMsg)
