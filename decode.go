@@ -17,14 +17,17 @@ const phasePanicMsg = "UBJSON decoder out of sync - data changing underfoot?"
 
 var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
-func Unmarshal(data []byte, v interface{}) error {
+func Unmarshal(data []byte, v interface{}, options ...UnmarshalOption) error {
 	// Check for well-formedness.
 	// Avoids filling out half a data structure
 	// before discovering a UBJSON syntax error.
 
 	var d decodeState
-
 	d.init(data)
+	for _, o := range options {
+		o.unmarshalApply(&d)
+	}
+
 	return d.unmarshal(v)
 }
 
@@ -113,6 +116,7 @@ type decodeState struct {
 	savedError            error
 	useNumber             bool
 	disallowUnknownFields bool
+	tagName               string
 }
 
 // readIndex returns the position of the last byte read.
@@ -144,7 +148,7 @@ func (d *decodeState) init(data []byte) *decodeState {
 	d.off = 0
 	d.savedError = nil
 	d.errorContext.Struct = nil
-
+	d.tagName = "ubjson"
 	// Reuse the allocated space for the FieldStack slice.
 	d.errorContext.FieldStack = d.errorContext.FieldStack[:0]
 	return d
@@ -475,7 +479,7 @@ func (d *decodeState) object(v reflect.Value) error {
 			v.Set(reflect.MakeMap(t))
 		}
 	case reflect.Struct:
-		fields = cachedTypeFields(t)
+		fields = cachedTypeFields(t, d.tagName)
 		// ok
 	default:
 		d.saveError(&UnmarshalTypeError{Value: "object", Type: t, Offset: int64(d.off)})
