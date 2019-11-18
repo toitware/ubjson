@@ -140,7 +140,7 @@ type encOpts struct {
 
 type encoderFunc func(e *encodeState, v reflect.Value, opts encOpts)
 
-var encoderCache sync.Map // map[reflect.Type]encoderFunc
+var encoderCache sync.Map // map[tagName]map[reflect.Type]encoderFunc
 
 func valueEncoder(v reflect.Value, tagName string) encoderFunc {
 	if !v.IsValid() {
@@ -150,7 +150,10 @@ func valueEncoder(v reflect.Value, tagName string) encoderFunc {
 }
 
 func typeEncoder(t reflect.Type, tagName string) encoderFunc {
-	if fi, ok := encoderCache.Load(t); ok {
+	m, _ := encoderCache.LoadOrStore(tagName, &sync.Map{})
+	typeMap := m.(*sync.Map)
+
+	if fi, ok := typeMap.Load(t); ok {
 		return fi.(encoderFunc)
 	}
 
@@ -163,7 +166,7 @@ func typeEncoder(t reflect.Type, tagName string) encoderFunc {
 		f  encoderFunc
 	)
 	wg.Add(1)
-	fi, loaded := encoderCache.LoadOrStore(t, encoderFunc(func(e *encodeState, v reflect.Value, opts encOpts) {
+	fi, loaded := typeMap.LoadOrStore(t, encoderFunc(func(e *encodeState, v reflect.Value, opts encOpts) {
 		wg.Wait()
 		f(e, v, opts)
 	}))
@@ -174,7 +177,7 @@ func typeEncoder(t reflect.Type, tagName string) encoderFunc {
 	// Compute the real encoder and replace the indirect func with it.
 	f = newTypeEncoder(t, true, tagName)
 	wg.Done()
-	encoderCache.Store(t, f)
+	typeMap.Store(t, f)
 	return f
 }
 
@@ -781,13 +784,11 @@ func dominantField(fields []field) (field, bool) {
 	return fields[0], true
 }
 
-var fieldCache sync.Map // map[reflect.Type]structFields
+var fieldCache sync.Map // map[tagName]map[reflect.Type]structFields
 
 // cachedTypeFields is like typeFields but uses a cache to avoid repeated work.
 func cachedTypeFields(t reflect.Type, tagName string) structFields {
-	if f, ok := fieldCache.Load(t); ok {
-		return f.(structFields)
-	}
-	f, _ := fieldCache.LoadOrStore(t, typeFields(t, tagName))
+	typeMap, _ := fieldCache.LoadOrStore(tagName, &sync.Map{})
+	f, _ := typeMap.(*sync.Map).LoadOrStore(t, typeFields(t, tagName))
 	return f.(structFields)
 }
