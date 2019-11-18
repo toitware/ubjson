@@ -140,7 +140,7 @@ type encOpts struct {
 
 type encoderFunc func(e *encodeState, v reflect.Value, opts encOpts)
 
-var encoderCache sync.Map // map[tagName]map[reflect.Type]encoderFunc
+var typeEncoderCache sync.Map // map[tagName]map[reflect.Type]encoderFunc
 
 func valueEncoder(v reflect.Value, tagName string) encoderFunc {
 	if !v.IsValid() {
@@ -150,10 +150,13 @@ func valueEncoder(v reflect.Value, tagName string) encoderFunc {
 }
 
 func typeEncoder(t reflect.Type, tagName string) encoderFunc {
-	m, _ := encoderCache.LoadOrStore(tagName, &sync.Map{})
-	typeMap := m.(*sync.Map)
+	m, ok := typeEncoderCache.Load(tagName)
+	if !ok {
+		m, _ = typeEncoderCache.LoadOrStore(tagName, &sync.Map{})
+	}
+	encoderCache := m.(*sync.Map)
 
-	if fi, ok := typeMap.Load(t); ok {
+	if fi, ok := encoderCache.Load(t); ok {
 		return fi.(encoderFunc)
 	}
 
@@ -166,7 +169,7 @@ func typeEncoder(t reflect.Type, tagName string) encoderFunc {
 		f  encoderFunc
 	)
 	wg.Add(1)
-	fi, loaded := typeMap.LoadOrStore(t, encoderFunc(func(e *encodeState, v reflect.Value, opts encOpts) {
+	fi, loaded := encoderCache.LoadOrStore(t, encoderFunc(func(e *encodeState, v reflect.Value, opts encOpts) {
 		wg.Wait()
 		f(e, v, opts)
 	}))
@@ -177,7 +180,7 @@ func typeEncoder(t reflect.Type, tagName string) encoderFunc {
 	// Compute the real encoder and replace the indirect func with it.
 	f = newTypeEncoder(t, true, tagName)
 	wg.Done()
-	typeMap.Store(t, f)
+	encoderCache.Store(t, f)
 	return f
 }
 
@@ -784,11 +787,19 @@ func dominantField(fields []field) (field, bool) {
 	return fields[0], true
 }
 
-var fieldCache sync.Map // map[tagName]map[reflect.Type]structFields
+var typeFieldCache sync.Map // map[tagName]map[reflect.Type]structFields
 
 // cachedTypeFields is like typeFields but uses a cache to avoid repeated work.
 func cachedTypeFields(t reflect.Type, tagName string) structFields {
-	typeMap, _ := fieldCache.LoadOrStore(tagName, &sync.Map{})
-	f, _ := typeMap.(*sync.Map).LoadOrStore(t, typeFields(t, tagName))
+	m, ok := typeFieldCache.Load(tagName)
+	if !ok {
+		m, _ = typeFieldCache.LoadOrStore(tagName, &sync.Map{})
+	}
+	fieldCache := m.(*sync.Map)
+
+	if f, ok := fieldCache.Load(t); ok {
+		return f.(structFields)
+	}
+	f, _ := fieldCache.LoadOrStore(t, typeFields(t, tagName))
 	return f.(structFields)
 }
