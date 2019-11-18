@@ -14,8 +14,11 @@ import (
 	"unicode"
 )
 
-func Marshal(v interface{}) ([]byte, error) {
+func Marshal(v interface{}, options ...MarshalOption) ([]byte, error) {
 	e := newEncodeState()
+	for _, o := range options {
+		o.marshalApply(e)
+	}
 
 	err := e.marshal(v, encOpts{})
 	if err != nil {
@@ -69,6 +72,7 @@ func (e *MarshalerError) Unwrap() error { return e.Err }
 type encodeState struct {
 	bytes.Buffer // accumulated output
 	scratch      [9]byte
+	tagName      string
 }
 
 var encodeStatePool sync.Pool
@@ -77,9 +81,12 @@ func newEncodeState() *encodeState {
 	if v := encodeStatePool.Get(); v != nil {
 		e := v.(*encodeState)
 		e.Reset()
+		e.tagName = "ubjson"
 		return e
 	}
-	return new(encodeState)
+	e := new(encodeState)
+	e.tagName = "ubjson"
+	return e
 }
 
 // ubjsonError is an error wrapper type for internal use only.
@@ -125,7 +132,7 @@ func isEmptyValue(v reflect.Value) bool {
 }
 
 func (e *encodeState) reflectValue(v reflect.Value, opts encOpts) {
-	valueEncoder(v)(e, v, opts)
+	valueEncoder(v, e.tagName)(e, v, opts)
 }
 
 type encOpts struct {
@@ -133,16 +140,22 @@ type encOpts struct {
 
 type encoderFunc func(e *encodeState, v reflect.Value, opts encOpts)
 
-var encoderCache sync.Map // map[reflect.Type]encoderFunc
+var typeEncoderCache sync.Map // map[tagName]map[reflect.Type]encoderFunc
 
-func valueEncoder(v reflect.Value) encoderFunc {
+func valueEncoder(v reflect.Value, tagName string) encoderFunc {
 	if !v.IsValid() {
 		return invalidValueEncoder
 	}
-	return typeEncoder(v.Type())
+	return typeEncoder(v.Type(), tagName)
 }
 
-func typeEncoder(t reflect.Type) encoderFunc {
+func typeEncoder(t reflect.Type, tagName string) encoderFunc {
+	m, ok := typeEncoderCache.Load(tagName)
+	if !ok {
+		m, _ = typeEncoderCache.LoadOrStore(tagName, &sync.Map{})
+	}
+	encoderCache := m.(*sync.Map)
+
 	if fi, ok := encoderCache.Load(t); ok {
 		return fi.(encoderFunc)
 	}
@@ -165,7 +178,7 @@ func typeEncoder(t reflect.Type) encoderFunc {
 	}
 
 	// Compute the real encoder and replace the indirect func with it.
-	f = newTypeEncoder(t, true)
+	f = newTypeEncoder(t, true, tagName)
 	wg.Done()
 	encoderCache.Store(t, f)
 	return f
@@ -178,7 +191,7 @@ var (
 
 // newTypeEncoder constructs an encoderFunc for a type.
 // The returned encoder only checks CanAddr when allowAddr is true.
-func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
+func newTypeEncoder(t reflect.Type, allowAddr bool, tagName string) encoderFunc {
 	/*
 		if t.Implements(marshalerType) {
 			return marshalerEncoder
@@ -211,15 +224,15 @@ func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
 	case reflect.Interface:
 		return interfaceEncoder
 	case reflect.Struct:
-		return newStructEncoder(t)
+		return newStructEncoder(t, tagName)
 	case reflect.Map:
-		return newMapEncoder(t)
+		return newMapEncoder(t, tagName)
 	case reflect.Slice:
-		return newSliceEncoder(t)
+		return newSliceEncoder(t, tagName)
 	case reflect.Array:
-		return newArrayEncoder(t)
+		return newArrayEncoder(t, tagName)
 	case reflect.Ptr:
-		return newPtrEncoder(t)
+		return newPtrEncoder(t, tagName)
 	default:
 		return unsupportedTypeEncoder
 	}
@@ -383,8 +396,8 @@ FieldLoop:
 	e.WriteByte(markerObjectEnd)
 }
 
-func newStructEncoder(t reflect.Type) encoderFunc {
-	se := structEncoder{fields: cachedTypeFields(t)}
+func newStructEncoder(t reflect.Type, tagName string) encoderFunc {
+	se := structEncoder{fields: cachedTypeFields(t, tagName)}
 	return se.encode
 }
 
@@ -417,7 +430,7 @@ func (me mapEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	e.WriteByte(markerObjectEnd)
 }
 
-func newMapEncoder(t reflect.Type) encoderFunc {
+func newMapEncoder(t reflect.Type, tagName string) encoderFunc {
 	switch t.Key().Kind() {
 	case reflect.String,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -427,7 +440,7 @@ func newMapEncoder(t reflect.Type) encoderFunc {
 		return unsupportedTypeEncoder
 		//}
 	}
-	me := mapEncoder{typeEncoder(t.Elem())}
+	me := mapEncoder{typeEncoder(t.Elem(), tagName)}
 	return me.encode
 }
 
@@ -458,7 +471,7 @@ func (se sliceEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	se.arrayEnc(e, v, opts)
 }
 
-func newSliceEncoder(t reflect.Type) encoderFunc {
+func newSliceEncoder(t reflect.Type, tagName string) encoderFunc {
 	// Byte slices get special treatment; arrays don't.
 	if t.Elem().Kind() == reflect.Uint8 {
 		//p := reflect.PtrTo(t.Elem())
@@ -466,7 +479,7 @@ func newSliceEncoder(t reflect.Type) encoderFunc {
 		return encodeByteSlice
 		//}
 	}
-	enc := sliceEncoder{newArrayEncoder(t)}
+	enc := sliceEncoder{newArrayEncoder(t, tagName)}
 	return enc.encode
 }
 
@@ -483,8 +496,8 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	e.WriteByte(markerArrayEnd)
 }
 
-func newArrayEncoder(t reflect.Type) encoderFunc {
-	enc := arrayEncoder{typeEncoder(t.Elem())}
+func newArrayEncoder(t reflect.Type, tagName string) encoderFunc {
+	enc := arrayEncoder{typeEncoder(t.Elem(), tagName)}
 	return enc.encode
 }
 
@@ -500,8 +513,8 @@ func (pe ptrEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	pe.elemEnc(e, v.Elem(), opts)
 }
 
-func newPtrEncoder(t reflect.Type) encoderFunc {
-	enc := ptrEncoder{typeEncoder(t.Elem())}
+func newPtrEncoder(t reflect.Type, tagName string) encoderFunc {
+	enc := ptrEncoder{typeEncoder(t.Elem(), tagName)}
 	return enc.encode
 }
 
@@ -601,7 +614,7 @@ func (x byIndex) Less(i, j int) bool {
 // typeFields returns a list of fields that UBJSON should recognize for the given type.
 // The algorithm is breadth-first search over the set of structs to include - the top struct
 // and then any reachable anonymous structs.
-func typeFields(t reflect.Type) structFields {
+func typeFields(t reflect.Type, tagName string) structFields {
 	// Anonymous fields to explore at the current level and the next.
 	current := []field{}
 	next := []field{{typ: t}}
@@ -644,7 +657,7 @@ func typeFields(t reflect.Type) structFields {
 					// Ignore unexported non-embedded fields.
 					continue
 				}
-				tag := sf.Tag.Get("ubjson")
+				tag := sf.Tag.Get(tagName)
 				if tag == "-" {
 					continue
 				}
@@ -748,7 +761,7 @@ func typeFields(t reflect.Type) structFields {
 
 	for i := range fields {
 		f := &fields[i]
-		f.encoder = typeEncoder(typeByIndex(t, f.index))
+		f.encoder = typeEncoder(typeByIndex(t, f.index), tagName)
 	}
 
 	nameIndex := make(map[string]int, len(fields))
@@ -774,13 +787,19 @@ func dominantField(fields []field) (field, bool) {
 	return fields[0], true
 }
 
-var fieldCache sync.Map // map[reflect.Type]structFields
+var typeFieldCache sync.Map // map[tagName]map[reflect.Type]structFields
 
 // cachedTypeFields is like typeFields but uses a cache to avoid repeated work.
-func cachedTypeFields(t reflect.Type) structFields {
+func cachedTypeFields(t reflect.Type, tagName string) structFields {
+	m, ok := typeFieldCache.Load(tagName)
+	if !ok {
+		m, _ = typeFieldCache.LoadOrStore(tagName, &sync.Map{})
+	}
+	fieldCache := m.(*sync.Map)
+
 	if f, ok := fieldCache.Load(t); ok {
 		return f.(structFields)
 	}
-	f, _ := fieldCache.LoadOrStore(t, typeFields(t))
+	f, _ := fieldCache.LoadOrStore(t, typeFields(t, tagName))
 	return f.(structFields)
 }

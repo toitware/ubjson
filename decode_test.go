@@ -13,6 +13,9 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type T struct {
@@ -2390,3 +2393,28 @@ func TestUnmarshalRecursivePointer(t *testing.T) {
 	}
 }
 */
+
+type customStruct struct {
+	Foo string `json:"bar" ubjson:"baz"`
+}
+
+func TestWithCustomTags(t *testing.T) {
+	t.Run("With ubjson tag", func(t *testing.T) {
+		res, err := Marshal(&customStruct{Foo: "foo"})
+		require.NoError(t, err)
+		assert.Equal(t, "{U\x03bazSU\x03foo}", string(res))
+		var out customStruct
+		require.NoError(t, Unmarshal(res, &out))
+		assert.Equal(t, out.Foo, "foo")
+	})
+
+	t.Run("With json tag", func(t *testing.T) {
+		res, err := Marshal(&customStruct{Foo: "foo"}, WithTagName("json"))
+		require.NoError(t, err)
+		assert.Equal(t, "{U\x03barSU\x03foo}", string(res))
+		var out customStruct
+		require.NoError(t, Unmarshal(res, &out, WithTagName("json")))
+		assert.Equal(t, out.Foo, "foo")
+	})
+
+}
