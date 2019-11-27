@@ -408,6 +408,8 @@ type DoublePtr struct {
 	J **int
 }
 
+type Empty struct{}
+
 var unmarshalTests = []unmarshalTest{
 	// basic types
 
@@ -458,6 +460,10 @@ var unmarshalTests = []unmarshalTest{
 	{in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '{', '}', '}'}, ptr: new(interface{}), out: map[string]interface{}{"x": map[string]interface{}{}, "y": map[string]interface{}{}}},
 
 	{in: []byte{'{', 'U', 1, 'd', '[', '$', 'U', '#', 'U', 1, 'b', '}'}, ptr: new(D), out: D{D: []uint8{'b'}}},
+
+	{in: []byte{'{', 'U', 1, 'x', 'U', 1, '}'}, ptr: new(Empty), out: Empty{}},
+	{in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '{', '}', '}'}, ptr: new(Empty), out: Empty{}},
+	{in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '[', ']', '}'}, ptr: new(Empty), out: Empty{}},
 
 	// TODO: Implement skip.
 	// {in: []byte{'{', 'U', 1, 'x', '{', '}', 'U', 1, 'y', '{', '}', '}'}, ptr: new(tx), out: tx{}},

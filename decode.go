@@ -199,7 +199,7 @@ func (d *decodeState) value(marker byte, v reflect.Value) error {
 				return err
 			}
 		} else {
-			d.skip()
+			return d.skipAtMarker(marker)
 		}
 
 	case markerArrayBegin:
@@ -208,27 +208,31 @@ func (d *decodeState) value(marker byte, v reflect.Value) error {
 				return err
 			}
 		} else {
-			d.skip()
+			return d.skipAtMarker(marker)
 		}
 	}
 
 	return nil
 }
 
+func (d *decodeState) skipAtMarker(marker byte) error {
+	switch marker {
+	default:
+		return d.skipLiteral(marker)
+
+	case markerObjectBegin:
+		_, err := d.objectInterface()
+		return err
+
+	case markerArrayBegin:
+		_, err := d.arrayInterface()
+		return err
+	}
+}
+
 // skip scans to the end of what was started.
 func (d *decodeState) skip() {
 	panic("unimplemented")
-	/*
-		data, i := d.data, d.off
-		depth := len(s.parseState)
-		for {
-			i++
-			if len(s.parseState) < depth {
-				d.off = i
-				return
-			}
-		}
-	*/
 }
 
 func (d *decodeState) skipLiteral(marker byte) error {
