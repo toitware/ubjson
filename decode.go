@@ -1014,6 +1014,10 @@ func (d *decodeState) literalInterface(marker byte) (interface{}, error) {
 		n, _ := extractNumber(marker, item)
 		return n, nil
 
+	case markerFloat32Literal,
+		markerFloat64Literal: // float
+		return extractFloat(marker, item), nil
+
 	default:
 		return nil, d.syntaxError(marker, "looking for beginning of value")
 	}
