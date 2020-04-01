@@ -749,6 +749,12 @@ func (d *decodeState) literalStore(marker byte, item []byte, v reflect.Value) er
 				break
 			}
 			v.SetFloat(f)
+		case reflect.Interface:
+			if v.NumMethod() != 0 {
+				d.saveError(&UnmarshalTypeError{Value: "number", Type: v.Type(), Offset: int64(d.readIndex())})
+				break
+			}
+			v.Set(reflect.ValueOf(f))
 		}
 	case markerStringLiteral:
 		s := extractString(item)
@@ -1007,6 +1013,10 @@ func (d *decodeState) literalInterface(marker byte) (interface{}, error) {
 		markerInt64Literal: // number
 		n, _ := extractNumber(marker, item)
 		return n, nil
+
+	case markerFloat32Literal,
+		markerFloat64Literal: // float
+		return extractFloat(marker, item), nil
 
 	default:
 		return nil, d.syntaxError(marker, "looking for beginning of value")

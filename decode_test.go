@@ -446,6 +446,10 @@ var unmarshalTests = []unmarshalTest{
 	{in: []byte{'[', '$', 'U', 'b', ']'}, ptr: new([]byte), out: []byte{'b'}},
 	{in: []byte{'[', '$', 'U', '#', 'U', 1, 'b'}, ptr: new([]byte), out: []byte{'b'}},
 	{in: []byte{'[', '$', 'U', '#', 'U', 1, 'b'}, ptr: new([]interface{}), out: []interface{}{int64('b')}},
+	{in: []byte{'[', '$', 'd', 0, 1, 0, 2, ']'}, ptr: new([]interface{}), out: []interface{}{float64(9.183829875491986e-41)}},
+	{in: []byte{'[', '$', 'd', 0, 1, 0, 2, ']'}, ptr: new(interface{}), out: []interface{}{float64(9.183829875491986e-41)}},
+	{in: []byte{'[', '$', 'D', 0, 0, 0, 1, 0, 0, 0, 2, ']'}, ptr: new([]interface{}), out: []interface{}{2.121995792e-314}},
+	{in: []byte{'[', '$', 'D', 0, 0, 0, 1, 0, 0, 0, 2, ']'}, ptr: new(interface{}), out: []interface{}{2.121995792e-314}},
 	{in: []byte{'[', '[', ']', '[', ']', ']'}, ptr: new(interface{}), out: []interface{}{[]interface{}{}, []interface{}{}}},
 
 	/*
