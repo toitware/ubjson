@@ -491,6 +491,15 @@ var unmarshalTests = []unmarshalTest{
 	*/
 	{in: []byte{'{', 'U', 1, 'Y', 'U', 1, 'U', 1, 'Z', 'U', 2, '}'}, ptr: new(T), out: T{Y: 1}},
 	{in: []byte{'{', '#', 'U', 2, 'U', 1, 'Y', 'U', 1, 'U', 1, 'Z', 'U', 2}, ptr: new(T), out: T{Y: 1}},
+
+	{
+		in:  []byte{'[', ']'},
+		ptr: new(Empty),
+		err: &UnmarshalTypeError{
+			Value: "array",
+			Type:  reflect.TypeOf(Empty{}),
+		},
+	},
 	/*
 		{in: `{"Y": 1, "Z": 2}`, ptr: new(T), err: fmt.Errorf("json: unknown field \"Z\""), disallowUnknownFields: true},
 
