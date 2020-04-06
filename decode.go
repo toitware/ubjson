@@ -230,11 +230,6 @@ func (d *decodeState) skipAtMarker(marker byte) error {
 	}
 }
 
-// skip scans to the end of what was started.
-func (d *decodeState) skip() {
-	panic("unimplemented")
-}
-
 func (d *decodeState) skipLiteral(marker byte) error {
 	switch marker {
 	default:
@@ -324,13 +319,10 @@ func (d *decodeState) array(v reflect.Value) error {
 	u, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
-		d.skip()
 		return u.UnmarshalUBJSON(d.data[start:d.off])
 	}
 	if ut != nil {
-		d.saveError(&UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)})
-		d.skip()
-		return nil
+		return &UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)}
 	}
 	v = pv
 
@@ -346,9 +338,7 @@ func (d *decodeState) array(v reflect.Value) error {
 		// Otherwise it's invalid.
 		fallthrough
 	default:
-		d.saveError(&UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)})
-		d.skip()
-		return nil
+		return &UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)}
 	case reflect.Array, reflect.Slice:
 		break
 	}
@@ -440,13 +430,10 @@ func (d *decodeState) object(v reflect.Value) error {
 	u, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.off
-		d.skip()
 		return u.UnmarshalUBJSON(d.data[start:d.off])
 	}
 	if ut != nil {
-		d.saveError(&UnmarshalTypeError{Value: "object", Type: v.Type(), Offset: int64(d.off)})
-		d.skip()
-		return nil
+		return &UnmarshalTypeError{Value: "object", Type: v.Type(), Offset: int64(d.off)}
 	}
 	v = pv
 	t := v.Type()
@@ -474,9 +461,7 @@ func (d *decodeState) object(v reflect.Value) error {
 			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		default:
 			if !reflect.PtrTo(t.Key()).Implements(textUnmarshalerType) {
-				d.saveError(&UnmarshalTypeError{Value: "object", Type: t, Offset: int64(d.off)})
-				d.skip()
-				return nil
+				return &UnmarshalTypeError{Value: "object", Type: t, Offset: int64(d.off)}
 			}
 		}
 		if v.IsNil() {
@@ -486,9 +471,7 @@ func (d *decodeState) object(v reflect.Value) error {
 		fields = cachedTypeFields(t, d.tagName)
 		// ok
 	default:
-		d.saveError(&UnmarshalTypeError{Value: "object", Type: t, Offset: int64(d.off)})
-		d.skip()
-		return nil
+		return &UnmarshalTypeError{Value: "object", Type: t, Offset: int64(d.off)}
 	}
 
 	var mapElem reflect.Value
