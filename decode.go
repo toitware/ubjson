@@ -3,6 +3,7 @@ package ubjson
 import (
 	"encoding"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
@@ -629,6 +630,8 @@ func (d *decodeState) object(v reflect.Value) error {
 
 	return nil
 }
+
+var jsonNumberType = reflect.TypeOf(json.Number(""))
 
 func (d *decodeState) literalStore(marker byte, item []byte, v reflect.Value) error {
 	// Check for unmarshaler.

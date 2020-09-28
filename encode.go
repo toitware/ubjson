@@ -310,14 +310,18 @@ func float32Encoder(e *encodeState, v reflect.Value, opts encOpts) {
 	e.Write(e.scratch[:5])
 }
 
+func writeFloat(e *encodeState, f float64) {
+	e.scratch[0] = markerFloat64Literal
+	binary.BigEndian.PutUint64(e.scratch[1:], math.Float64bits(f))
+	e.Write(e.scratch[:9])
+}
+
 func float64Encoder(e *encodeState, v reflect.Value, opts encOpts) {
 	f := v.Float()
 	if math.IsInf(f, 0) || math.IsNaN(f) {
 		e.error(&UnsupportedValueError{v, strconv.FormatFloat(f, 'g', -1, 64)})
 	}
-	e.scratch[0] = markerFloat64Literal
-	binary.BigEndian.PutUint64(e.scratch[1:], math.Float64bits(f))
-	e.Write(e.scratch[:9])
+	writeFloat(e, f)
 }
 
 func writeString(e *encodeState, s string) {
@@ -326,27 +330,24 @@ func writeString(e *encodeState, s string) {
 }
 
 func stringEncoder(e *encodeState, v reflect.Value, opts encOpts) {
-	/*
-		if v.Type() == numberType {
-			numStr := v.String()
-			// In Go1.5 the empty string encodes to "0", while this is not a valid number literal
-			// we keep compatibility so check validity after this.
-			if numStr == "" {
-				numStr = "0" // Number's zero-val
-			}
-			if !isValidNumber(numStr) {
-				e.error(fmt.Errorf("ubjson: invalid number literal %q", numStr))
-			}
-			if opts.quoted {
-				e.WriteByte('"')
-			}
-			e.WriteString(numStr)
-			if opts.quoted {
-				e.WriteByte('"')
-			}
+	if v.Type() == jsonNumberType {
+		str := v.String()
+		n, err := strconv.ParseInt(str, 10, 64)
+		if err == nil {
+			writeInt(e, n)
 			return
 		}
-	*/
+
+		f, err := strconv.ParseFloat(str, 64)
+		if err == nil {
+			writeFloat(e, f)
+			return
+		}
+
+		e.error(&UnsupportedValueError{v, str})
+		return
+	}
+
 	e.WriteByte(markerStringLiteral)
 	writeString(e, v.String())
 }

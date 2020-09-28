@@ -7,6 +7,7 @@ package ubjson
 import (
 	"bytes"
 	"encoding"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -2434,6 +2435,30 @@ func TestWithCustomTags(t *testing.T) {
 		var out customStruct
 		require.NoError(t, Unmarshal(res, &out, WithTagName("json")))
 		assert.Equal(t, out.Foo, "foo")
+	})
+}
+
+func TestNumber(t *testing.T) {
+	t.Run("json integer", func(t *testing.T) {
+		val := struct {
+			N json.Number
+		}{}
+		val.N = "5"
+
+		res, err := Marshal(&val)
+		require.NoError(t, err)
+		assert.Equal(t, "{U\x01NU\x05}", string(res))
+	})
+
+	t.Run("json number", func(t *testing.T) {
+		val := struct {
+			N json.Number
+		}{}
+		val.N = "5.5"
+
+		res, err := Marshal(&val)
+		require.NoError(t, err)
+		assert.Equal(t, "{U\x01ND@\x16\x00\x00\x00\x00\x00\x00}", string(res))
 	})
 
 }
