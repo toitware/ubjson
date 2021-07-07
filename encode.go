@@ -491,10 +491,11 @@ type arrayEncoder struct {
 func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	e.WriteByte(markerArrayBegin)
 	n := v.Len()
+	e.WriteByte(markerCount)
+	writeInt(e, int64(n))
 	for i := 0; i < n; i++ {
 		ae.elemEnc(e, v.Index(i), opts)
 	}
-	e.WriteByte(markerArrayEnd)
 }
 
 func newArrayEncoder(t reflect.Type, tagName string) encoderFunc {
