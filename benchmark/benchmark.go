@@ -1,15 +1,6 @@
 package benchmark
 
 /*
-func init() {
-	var out SmallPayload
-	json.Unmarshal(smallFixture, &out)
-	data, _ := ubjson.Marshal(out)
-	fmt.Println(data)
-}
-*/
-
-/*
    Small paylod, http log like structure. Size: 190 bytes
 */
 var smallFixture []byte = []byte(`{
