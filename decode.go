@@ -323,8 +323,11 @@ func (d *decodeState) array(v reflect.Value) error {
 	// Check for unmarshaler.
 	u, ut, pv := indirect(v, false)
 	if u != nil {
-		start := d.readIndex()
-		return u.UnmarshalUBJSON(d.data[start:d.off])
+		arr, err := d.readArray()
+		if err != nil {
+			return err
+		}
+		return u.UnmarshalUBJSON(arr)
 	}
 	if ut != nil {
 		return &UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)}
@@ -434,8 +437,11 @@ func (d *decodeState) object(v reflect.Value) error {
 	// Check for unmarshaler.
 	u, ut, pv := indirect(v, false)
 	if u != nil {
-		start := d.off
-		return u.UnmarshalUBJSON(d.data[start:d.off])
+		obj, err := d.readObject()
+		if err != nil {
+			return err
+		}
+		return u.UnmarshalUBJSON(obj)
 	}
 	if ut != nil {
 		return &UnmarshalTypeError{Value: "object", Type: v.Type(), Offset: int64(d.off)}
@@ -1013,6 +1019,8 @@ func (d *decodeState) literalInterface(marker byte) (interface{}, error) {
 	}
 }
 
+// extractNumber takes a marker and its corresponding number and returns the decoded number and the number of bytes
+// that were read.
 func extractNumber(marker byte, item []byte) (int64, int) {
 	switch marker {
 	case markerInt8Literal:
@@ -1030,6 +1038,7 @@ func extractNumber(marker byte, item []byte) (int64, int) {
 	panic(phasePanicMsg)
 }
 
+// extractFloat attempts to extract the value of a given float, denoted by marker, or panics if invalid marker given.
 func extractFloat(marker byte, item []byte) float64 {
 	switch marker {
 	case markerFloat64Literal:
@@ -1059,4 +1068,126 @@ func quoteChar(c byte) string {
 	// use quoted string with different quotation marks
 	s := strconv.Quote(string(c))
 	return "'" + s[1:len(s)-1] + "'"
+}
+
+// readObject returns a slice of bytes containing the read object. It duplicates the core logic of d.object(), but simply
+// reads the bytes of the object without processing them.
+func (d *decodeState) readObject() ([]byte, error) {
+	objStart := d.off
+
+	var typeMarker byte
+	if d.isMarker(markerType) {
+		typeMarker = d.scanNext()
+	}
+
+	count := -1
+	if d.isMarker(markerCount) {
+		var err error
+		if count, err = d.readLength(); err != nil {
+			return nil, err
+		}
+	}
+
+	i := 0
+	for {
+		if count >= 0 && count == i {
+			break
+		}
+
+		if d.isMarker(markerObjectEnd) {
+			break
+		}
+
+		// Read key.
+		if err := d.skipLiteral(markerStringLiteral); err != nil {
+			return nil, err
+		}
+
+		eType := typeMarker
+		if eType == 0 {
+			eType = d.scanNext()
+		}
+
+		switch eType {
+		case markerObjectBegin:
+			if _, err := d.readObject(); err != nil {
+				return nil, err
+			}
+		case markerArrayBegin:
+			if _, err := d.readArray(); err != nil {
+				return nil, err
+			}
+		default:
+			if err := d.skipLiteral(eType); err != nil {
+				return nil, err
+			}
+		}
+
+		i++
+	}
+	return d.data[objStart:d.off], nil
+}
+
+// readArray returns a slice of bytes containing the read array. It duplicates the core logic of d.array(), but simply
+// reads the bytes of the array without processing them. If the array is in optimised format, including both the type
+// and count, and the type is of fixed length, readArray will return immediately by updating the offset.
+func (d *decodeState) readArray() ([]byte, error) {
+	arrStart := d.off
+
+	var typeMarker byte
+	if d.isMarker(markerType) {
+		typeMarker = d.scanNext()
+	}
+
+	count := -1
+	if d.isMarker(markerCount) {
+		var err error
+		if count, err = d.readLength(); err != nil {
+			return nil, err
+		}
+	}
+
+	if typeMarker != 0 && count >= 0 {
+		// If the type is of fixed length, we can return early by multiplying the number of elements by the size of the type.
+		var typeSize int
+		switch typeMarker {
+		case markerInt8Literal, markerUint8Literal:
+			typeSize = 1
+		case markerInt16Literal:
+			typeSize = 2
+		case markerInt32Literal, markerFloat32Literal:
+			typeSize = 4
+		case markerInt64Literal, markerFloat64Literal:
+			typeSize = 8
+		}
+
+		if typeSize > 0 {
+			d.off += typeSize * count
+			return d.data[arrStart:d.off], nil
+		}
+	}
+
+	i := 0
+	for {
+		if count >= 0 {
+			if i == count {
+				break
+			}
+		} else if d.isMarker(markerArrayEnd) {
+			break
+		}
+
+		eType := typeMarker
+		if eType == 0 {
+			eType = d.scanNext()
+		}
+
+		if err := d.skipLiteral(eType); err != nil {
+			return nil, err
+		}
+
+		i++
+	}
+
+	return d.data[arrStart:d.off], nil
 }

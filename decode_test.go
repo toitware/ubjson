@@ -2462,3 +2462,66 @@ func TestNumber(t *testing.T) {
 	})
 
 }
+
+type ArrayUnmarshaler []int
+
+func (u *ArrayUnmarshaler) UnmarshalUBJSON(i []byte) error {
+	if len(i) != 5 { // Make sure only the data from the array is passed, nothing more.
+		return errors.New(fmt.Sprintf("expected input with length 5, got %d", len(i)))
+	}
+	num := int(i[4])
+	*u = append(*u, num*10)
+	return nil
+}
+
+type ObjectUnmarshaler struct {
+	SomeField int `ubjson:"someField"`
+}
+
+func (u *ObjectUnmarshaler) UnmarshalUBJSON(i []byte) error {
+	if len(i) != 14 {
+		return errors.New(fmt.Sprintf("expected input with length 14, got %d", len(i)))
+	}
+	num := int(i[12])
+	u.SomeField = num * 10
+	return nil
+}
+
+type objectWrapper struct {
+	ObjectUnmarshaler ObjectUnmarshaler `ubjson:"objectUnmarshaler"`
+	Wham              string            `ubjson:"wham"`
+}
+type arrayWrapper struct {
+	ArrayUnmarshaler ArrayUnmarshaler `ubjson:"arrayunmarshaler"`
+	Wham             string           `ubjson:"wham"`
+}
+
+func TestCustomUnmarshaler(t *testing.T) {
+	t.Run("custom object unmarshaler", func(t *testing.T) {
+		res, err := Marshal(&objectWrapper{ObjectUnmarshaler: ObjectUnmarshaler{SomeField: 10}, Wham: "Wham"})
+		require.NoError(t, err)
+
+		expected := objectWrapper{
+			ObjectUnmarshaler: ObjectUnmarshaler{
+				SomeField: 100,
+			},
+			Wham: "Wham",
+		}
+		var out objectWrapper
+		require.NoError(t, Unmarshal(res, &out))
+		require.Equal(t, expected, out)
+	})
+
+	t.Run("custom array unmarshaler", func(t *testing.T) {
+		res, err := Marshal(&arrayWrapper{ArrayUnmarshaler: ArrayUnmarshaler{10}, Wham: "Wham"})
+		require.NoError(t, err)
+
+		expected := arrayWrapper{
+			ArrayUnmarshaler: ArrayUnmarshaler{100},
+			Wham:             "Wham",
+		}
+		var out arrayWrapper
+		require.NoError(t, Unmarshal(res, &out))
+		require.Equal(t, expected, out)
+	})
+}
