@@ -1,0 +1,5 @@
+#!/usr/bin/make -f
+
+export DH_GOLANG_EXCLUDES := benchmark
+%:
+	dh $@ --builddirectory=debian/.build --buildsystem=golang --with=golang

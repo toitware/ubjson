@@ -1,0 +1,5 @@
+golang-github-toitware-ubjson (0.0~git20231002.71c8fab-1) unstable; urgency=medium
+
+  * Initial release (Closes: #1000000)
+
+ -- Toit contributors <contact@toit.io>  Thu, 04 Dec 2025 22:01:21 +0000
